@@ -34,6 +34,9 @@ class PacedClient extends http.BaseClient {
   int requests = 0;
   int throttled = 0;
 
+  /// Non-2xx answers whose body is not JSON of the shape {"message": "..."}.
+  final badErrorBodies = <String>[];
+
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     final original = request as http.Request;
@@ -49,6 +52,17 @@ class PacedClient extends http.BaseClient {
       final response = await http.Response.fromStream(await _inner.send(copy));
       lastStatus = response.statusCode;
       lastBody = response.body;
+      if (response.statusCode >= 400 && !(response.statusCode == 429 && attempt < 4)) {
+        Object? j;
+        try {
+          j = jsonDecode(response.body);
+        } on FormatException {
+          j = null;
+        }
+        if (!(j is Map && j['message'] is String && (j['message'] as String).isNotEmpty)) {
+          badErrorBodies.add('${request.method} ${request.url.path} -> ${response.statusCode}');
+        }
+      }
 
       if (response.statusCode == 429 && attempt < 4) {
         throttled++;
@@ -70,9 +84,14 @@ class PacedClient extends http.BaseClient {
 }
 
 class Row {
-  Row(this.id, this.what, this.expected, this.actual, this.pass);
+  Row(this.id, this.what, this.expected, this.actual, this.pass, {this.pending = false});
   final String id, what, expected, actual;
   final bool pass;
+
+  /// A check for a change that is merged but not deployed yet (todos PR #2):
+  /// a failure is reported as PENDING and does not fail the run.
+  final bool pending;
+  String get result => pass ? 'PASS' : (pending ? 'PENDING' : 'FAIL');
 }
 
 final rows = <Row>[];
@@ -109,10 +128,10 @@ Future<void> attempt(Future<Object?> Function() f) async {
 
 /// Records one row. [expected] is what the docs say (or why they are silent);
 /// [ok] decides PASS/FAIL from the last answer.
-void record(String id, String what, String expected, bool Function() ok, {String? note}) {
-  final row = Row(id, what, expected, note ?? last(), ok());
+void record(String id, String what, String expected, bool Function() ok, {String? note, bool pending = false}) {
+  final row = Row(id, what, expected, note ?? last(), ok(), pending: pending);
   rows.add(row);
-  stdout.writeln('${row.pass ? 'PASS' : 'FAIL'}  ${row.id}  ${row.what}  ->  ${row.actual}');
+  stdout.writeln('${row.result}  ${row.id}  ${row.what}  ->  ${row.actual}');
 }
 
 Future<http.Response> raw(
@@ -152,6 +171,7 @@ Future<void> main() async {
   final passB = 'Pw-${randomString(14)}';
   final passNew = 'Pw-${randomString(14)}';
   final createdTodos = <(TodosApi, int)>[];
+  final extraUsers = <(int, String)>[]; // (id, token) of users made by a check that should have been refused
   String? oldToken;
   int keyTodosBefore = -1;
 
@@ -182,24 +202,36 @@ Future<void> main() async {
     record('R3', 'register without the required name', '422 (validation)', () => client.lastStatus == 422);
 
     await attempt(() => raw('POST', '/api/users/register', body: '{not json'));
-    record('R4', 'register with a malformed JSON body', 'a 4xx, docs silent', is4xx);
+    record('R4', 'register with a malformed JSON body', '400', () => client.lastStatus == 400);
+
+    await attempt(() => raw('POST', '/api/users/register', body: jsonEncode({'name': 'T', 'email': 'nodot$tag@localhost', 'password': passA})));
+    final noDot = jsonDecode(client.lastBody);
+    if (is2xx() && noDot is Map && noDot['id'] is int && noDot['token'] is String) {
+      extraUsers.add((noDot['id'] as int, noDot['token'] as String)); // deleted at the end
+    }
+    record('R7', 'register with an email without a dotted domain (name@host)', '422 (todos PR #2)', () => client.lastStatus == 422,
+        pending: true);
 
     await attempt(() => api.register(name: 'Check A', email: emailA, password: passA));
-    record('R5', 'register user A', '200 with token and id', () => client.lastStatus == 200 && api.loggedIn);
+    record('R5', 'register user A', '200 or 201 with token and id', () => (client.lastStatus == 200 || client.lastStatus == 201) && api.loggedIn);
+    record('R5b', 'a successful register answers 201', '201 (todos PR #2)', () => client.lastStatus == 201, pending: true);
     final aId = api.userId;
 
     await attempt(() => TodosApi(apiKey: apiKey, client: client).register(name: 'Dup', email: emailA, password: passA));
-    record('R6', 'register the same email again', 'a 4xx (409 or 422), docs silent', is4xx);
+    record('R6', 'register the same email again', '409', () => client.lastStatus == 409);
 
     // ---------------------------------------------------------- login
     await attempt(() => TodosApi(apiKey: apiKey, client: client).login(email: emailA, password: 'Wrong-${randomString(8)}'));
-    record('L1', 'login with the wrong password', 'a 4xx (docs list only 200)', is4xx);
+    record('L1', 'login with the wrong password', '401 "Invalid email or password."',
+        () => client.lastStatus == 401 && jsonDecode(client.lastBody)['message'] == 'Invalid email or password.');
+    final wrongPasswordBody = client.lastBody;
 
     await attempt(() => TodosApi(apiKey: apiKey, client: client).login(email: 'nobody-${randomString(8)}@example.com', password: passA));
-    record('L2', 'login with an unknown email', 'a 4xx (docs list only 200)', is4xx);
+    record('L2', 'login with an unknown email', '401, the same body as a wrong password (no account leak)',
+        () => client.lastStatus == 401 && client.lastBody == wrongPasswordBody);
 
     await attempt(() => TodosApi(apiKey: apiKey, client: client).login(email: emailA, password: 'short'));
-    record('L3', 'login with a 5-character password', 'a 4xx (docs list only 200)', is4xx);
+    record('L3', 'login with a 5-character password', '401 (not a 422)', () => client.lastStatus == 401);
 
     await attempt(() => raw('POST', '/api/users/login', body: '{}'));
     record('L4', 'login with an empty body', '422 (validation)', () => client.lastStatus == 422);
@@ -224,7 +256,8 @@ Future<void> main() async {
 
     Todo? todo;
     await attempt(() async => todo = await api.createTodo('first todo'));
-    record('T2', 'createTodo', '200 with id, description, completed', () => client.lastStatus == 200 && todo != null);
+    record('T2', 'createTodo', '200 with id, description, completed (boolean)',
+        () => client.lastStatus == 200 && todo != null && jsonDecode(client.lastBody)['completed'] == false);
     if (todo != null) createdTodos.add((api, todo!.id));
     final tid = todo?.id ?? -1;
 
@@ -285,9 +318,23 @@ Future<void> main() async {
     await attempt(() => raw('GET', '/api/users/$aId/todos/999999999', token: api.token));
     record('D2', 'GET a todo that does not exist', '404', () => client.lastStatus == 404);
 
-    await attempt(() => raw('DELETE', '/api/users/$aId/todo/$tid', token: api.token));
-    record('D3', 'DELETE /api/users/{id}/todo/{id} exactly as the Swagger page documents it', '200 (documented path)',
-        () => client.lastStatus == 200);
+    await attempt(() => api.deleteTodo(tid));
+    record('D3', 'DELETE /api/users/{id}/todos/{id}, the path the Swagger page now documents', '200', () => client.lastStatus == 200);
+
+    await attempt(() => raw('POST', '/api/users/$aId/todos', token: api.token, body: '{not json'));
+    record('D4', 'createTodo with a malformed JSON body', '400', () => client.lastStatus == 400);
+
+    await attempt(() => raw('GET', '/api/users/me', token: api.token));
+    record('G1', 'GET /api/users/me returns the token\'s user, no password, no token', '200 (todos PR #2)', () {
+      final j = jsonDecode(client.lastBody);
+      return client.lastStatus == 200 && j is Map && j['id'] == aId && !j.containsKey('password') && !j.containsKey('token');
+    }, pending: true);
+
+    // the todo D3 deleted is created again so the cross-user checks below have one to attack
+    Todo? again;
+    await attempt(() async => again = await api.createTodo('first todo, edited'));
+    if (again != null) createdTodos.add((api, again!.id));
+    final tid2 = again?.id ?? -1;
 
     // ---------------------------------------------- missing / bad token
     await attempt(() => raw('GET', '/api/users/$aId/todos'));
@@ -301,23 +348,37 @@ Future<void> main() async {
     record('O1', 'register user B', '200 with token and id', () => client.lastStatus == 200 && apiB.loggedIn);
     final bId = apiB.userId;
 
-    await attempt(() => raw('GET', '/api/users/$bId/todos/$tid', token: apiB.token));
+    await attempt(() => raw('GET', '/api/users/$bId/todos/$tid2', token: apiB.token));
     record('O2', "user B reads user A's todo (B's own id in the path)", '403 or 404', () => client.lastStatus == 403 || client.lastStatus == 404);
 
-    await attempt(() => apiB.updateTodo(tid, description: 'hijacked', completed: true));
+    await attempt(() => apiB.updateTodo(tid2, description: 'hijacked', completed: true));
     record('O3', "user B edits user A's todo", '403 or 404', () => client.lastStatus == 403 || client.lastStatus == 404);
 
-    await attempt(() => apiB.deleteTodo(tid));
+    await attempt(() => apiB.deleteTodo(tid2));
     record('O4', "user B deletes user A's todo", '403 or 404', () => client.lastStatus == 403 || client.lastStatus == 404);
 
     await attempt(api.listTodos);
     record('O5', "user A's todo is unchanged after B's attempts", '200, text unchanged and still there', () {
       final j = jsonDecode(client.lastBody);
-      return j is List && j.any((t) => t['id'] == tid && t['description'] == 'first todo, edited');
+      return j is List && j.any((t) => t['id'] == tid2 && t['description'] == 'first todo, edited');
     });
 
     await attempt(apiB.listTodos);
     record("O6", "user B's list does not contain A's todos", '200, empty array', () => client.lastBody.trim() == '[]');
+
+    // a user_id in the path that is not the token's user is a plain 403
+    await attempt(() => raw('GET', '/api/users/$aId/todos', token: apiB.token));
+    record('M1', "user B lists user A's todos with A's id in the path", '403 {message}', () => client.lastStatus == 403);
+
+    await attempt(() => raw('DELETE', '/api/users/$aId/todos/$tid2', token: apiB.token));
+    record('M2', "user B deletes user A's todo with A's id in the path", '403 {message}', () => client.lastStatus == 403);
+
+    await attempt(() => raw('GET', '/api/users/999999999/todos', token: apiB.token));
+    record('M3', 'a user_id that does not exist in the path', '403 {message}', () => client.lastStatus == 403);
+
+    await attempt(api.listTodos);
+    record('M4', "user A's todo survived the mismatched deletes", '200, still there',
+        () => (jsonDecode(client.lastBody) as List).any((t) => t['id'] == tid2));
 
     // ---------------------------------------------------- per-user limit
     stdout.writeln('  (filling user A up to the documented limit of 25 todos)');
@@ -385,6 +446,10 @@ Future<void> main() async {
         // already gone
       }
     }
+    for (final (id, token) in extraUsers) {
+      await attempt(() => raw('DELETE', '/api/users/$id', token: token));
+      record('CX', 'cleanup: delete a user a check created by mistake', '200', () => client.lastStatus == 200);
+    }
     for (final (name, u) in [('A', api), ('B', apiB)]) {
       if (!u.loggedIn || u.userId == null) continue;
       final id = u.userId;
@@ -400,6 +465,9 @@ Future<void> main() async {
       record('CZ', 'the key holds the same number of key-level todos as at the start', 'equal', () => n == keyTodosBefore,
           note: 'before=$keyTodosBefore, after=$n');
     } catch (_) {}
+    record('E1', 'every error answer in the whole run was JSON {"message": "..."}', 'none that was not',
+        () => client.badErrorBodies.isEmpty,
+        note: client.badErrorBodies.isEmpty ? 'all of them were' : client.badErrorBodies.take(5).join('; '));
   }
 
   // ------------------------------------------------------------ results
@@ -408,12 +476,12 @@ Future<void> main() async {
     ..writeln('| --- | --- | --- | --- | --- |');
   for (final r in rows) {
     String cell(String s) => s.replaceAll('|', '\\|').replaceAll('\n', ' ');
-    b.writeln('| ${r.id} | ${cell(r.what)} | ${cell(r.expected)} | ${cell(r.actual)} | ${r.pass ? 'PASS' : 'FAIL'} |');
+    b.writeln('| ${r.id} | ${cell(r.what)} | ${cell(r.expected)} | ${cell(r.actual)} | ${r.result} |');
   }
   b
     ..writeln()
     ..writeln('${client.requests} requests sent, ${client.throttled} answered with 429 and retried.');
   File('tool/live_check/results.md').writeAsStringSync(b.toString());
   stdout.writeln('\n$b');
-  exit(rows.any((r) => !r.pass) ? 1 : 0);
+  exit(rows.any((r) => !r.pass && !r.pending) ? 1 : 0);
 }

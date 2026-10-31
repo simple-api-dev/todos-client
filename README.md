@@ -60,18 +60,18 @@ key), deleting your account, and the admin routes; see the
 
 ## Good to know
 
-- Errors usually come back as `{"message": "..."}`, but some are a bare JSON
-  string or plain text; the app handles all three and shows readable text for
-  400, 401, 403, 404, 409, 422 and 429.
+- Every error is JSON, `{"message": "..."}`; the app shows readable text for
+  400 (malformed JSON, bad reset code), 401, 403, 404, 409, 422 and 429.
 - A bad or missing key answers `401`. A dead token answers `401` too; the app
-  then logs you out.
-- A wrong password answers `404 Login Failed`, which the app shows as "Wrong
-  email or password."
-- The delete route is `DELETE /api/users/{user_id}/todos/{id}`. The Swagger page
-  documents `/todo/{id}` (singular), which answers 404.
-- `completed` is a boolean on writes but `0`/`1` on reads; the client accepts both.
-- Passwords need at least 8 characters. A user may have 25 todos (the API
-  currently lets a 26th through).
+  then logs you out. A failed login is also a `401` ("Invalid email or
+  password."); it is shown on the form and is not treated as an expired session.
+- Registering an email that is already taken answers `409`. A new user answers
+  `201` (the app also accepts `200`, which older deployments sent).
+- A `user_id` in the path that is not yours answers `403`; the app always
+  sends your own id.
+- `completed`, `enabled` and `admin` are real booleans.
+- Passwords need at least 8 characters. A user may have 25 todos; the 26th is
+  refused with `403`.
 - The API is rate limited, so a burst of clicks may be answered with `429`.
 - More detail, with every status and body observed from the live API, is in
   [`tool/live_check/REPORT.md`](tool/live_check/REPORT.md).

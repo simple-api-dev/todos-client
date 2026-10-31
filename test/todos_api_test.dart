@@ -51,8 +51,7 @@ void main() {
   test('login stores the token and the user id, and later calls use both', () async {
     final (api, seen) = apiWith((r) {
       if (r.url.path == '/api/users/login') {
-        // Real login answer: enabled/admin are 0/1 here, not booleans.
-        return json({'id': 456, 'name': 'Check A', 'email': 'a@example.com', 'enabled': 1, 'token': 'tok-1', 'admin': 0, 'warnings': 0, 'external_id': null});
+        return json({'id': 456, 'name': 'Check A', 'email': 'a@example.com', 'enabled': true, 'token': 'tok-1', 'admin': false});
       }
       return json([]);
     });
@@ -68,8 +67,17 @@ void main() {
     expect(r.headers['Authorization'], 'Bearer tok-1');
   });
 
+  for (final status in [200, 201]) {
+    test('register logs in on a $status answer', () async {
+      final (api, _) = apiWith((_) => json({'name': 'A', 'email': 'a@example.com', 'enabled': true, 'token': 'tok-r', 'admin': false, 'id': 456}, status));
+      final result = await api.register(name: 'A', email: 'a@example.com', password: 'secret-pass');
+      expect(result.token, 'tok-r');
+      expect(api.loggedIn, isTrue);
+    });
+  }
+
   test('register sends name, email and password and logs in', () async {
-    final (api, seen) = apiWith((_) => json({'name': 'Check A', 'email': 'a@example.com', 'enabled': true, 'token': 'tok-r', 'admin': false, 'id': 456}));
+    final (api, seen) = apiWith((_) => json({'name': 'Check A', 'email': 'a@example.com', 'enabled': true, 'token': 'tok-r', 'admin': false, 'id': 456}, 201));
     final result = await api.register(name: 'Check A', email: 'a@example.com', password: 'secret-pass');
 
     expect(seen.single.method, 'POST');
@@ -78,6 +86,20 @@ void main() {
     expect(result.token, 'tok-r');
     expect(api.loggedIn, isTrue);
     expect(api.userId, 456);
+  });
+
+  test('a failed login throws the 401 and stays logged out', () async {
+    final (api, _) = apiWith((_) => json({'message': 'Invalid email or password.'}, 401));
+    await expectLater(
+      api.login(email: 'a@example.com', password: 'wrong-pass'),
+      throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 401).having((e) => e.message, 'message', 'Invalid email or password.')),
+    );
+    expect(api.loggedIn, isFalse);
+  });
+
+  test('a duplicate register throws the 409', () async {
+    final (api, _) = apiWith((_) => json({'message': 'User registration failed, email already registered to this developer account.'}, 409));
+    await expectLater(api.register(name: 'A', email: 'a@example.com', password: 'secret-pass'), throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 409)));
   });
 
   test('a 2xx answer without a token is reported, not treated as a login', () async {
@@ -96,15 +118,15 @@ void main() {
     expect(api.token, isNull);
     expect(api.userId, isNull);
 
-    final (api2, _) = loggedIn((_) => text('Invalid Auth Token. Unauthorized.2', 401));
+    final (api2, _) = loggedIn((_) => json({'message': 'Invalid auth token.  Unauthorized.'}, 401));
     await expectLater(api2.logout(), throwsA(isA<ApiException>()));
     expect(api2.loggedIn, isFalse);
   });
 
-  test('listTodos parses the list; completed arrives as 0/1 on reads', () async {
+  test('listTodos parses the list; completed is a real boolean', () async {
     final (api, seen) = loggedIn((_) => json([
-          {'id': 3260, 'user_id': 42, 'description': 'first todo', 'completed': 0, 'author': 'Check A', 'meta': null},
-          {'id': 3261, 'user_id': 42, 'description': 'second', 'completed': 1, 'author': 'Check A', 'meta': null},
+          {'id': 3260, 'user_id': 42, 'description': 'first todo', 'completed': false, 'author': 'Check A', 'meta': null},
+          {'id': 3261, 'user_id': 42, 'description': 'second', 'completed': true, 'author': 'Check A', 'meta': null},
         ]));
     final todos = await api.listTodos();
 
@@ -136,7 +158,7 @@ void main() {
     expect(todo.completed, isTrue);
   });
 
-  test('deleteTodo uses /todos/{id}, not the /todo/{id} the Swagger page shows', () async {
+  test('deleteTodo uses /todos/{id}', () async {
     final (api, seen) = loggedIn((_) => json({'message': 'Todo deleted (3260)'}));
     await api.deleteTodo(3260);
 
@@ -181,16 +203,32 @@ void main() {
       expect(e.message, startsWith('Unauthorized.  Please provide a valid apikey'));
     });
 
-    test('401 bad token: plain text, not JSON', () async {
-      final e = await failing(text('Invalid Auth Token. Unauthorized.2', 401));
+    test('401 bad token: JSON message', () async {
+      final e = await failing(json({'message': 'Invalid auth token.  Unauthorized.'}, 401));
       expect(e.statusCode, 401);
-      expect(e.message, 'Invalid Auth Token. Unauthorized.2');
+      expect(e.message, 'Invalid auth token.  Unauthorized.');
     });
 
-    test('404: a bare JSON string', () async {
-      final e = await failing(http.Response('"Todo 999999999 not found."', 404));
+    test('404: a JSON message', () async {
+      final e = await failing(json({'message': 'Todo 999999999 not found.'}, 404));
       expect(e.statusCode, 404);
       expect(e.message, 'Todo 999999999 not found.');
+    });
+
+    test('400: malformed JSON body', () async {
+      final e = await failing(json({'message': 'Malformed JSON in the request body.'}, 400));
+      expect(e.statusCode, 400);
+    });
+
+    test('403: a user_id that is not the token\'s user', () async {
+      final e = await failing(json({'message': 'Forbidden.  The user_id in the path does not belong to this auth token.'}, 403));
+      expect(e.statusCode, 403);
+    });
+
+    test('a non-JSON body (not from the API) falls back to a generic message', () async {
+      final e = await failing(text('<html>Bad gateway</html>', 502));
+      expect(e.statusCode, 502);
+      expect(e.message, 'Request failed (HTTP 502).');
     });
 
     test('404 on update: a JSON message', () async {
@@ -199,7 +237,7 @@ void main() {
     });
 
     test('403: the per-user todo limit', () async {
-      final e = await failing(json({'message': 'Maximum number of todos (25) per user has been reached. (Basic Acct)'}, 403));
+      final e = await failing(json({'message': 'Maximum number of todos (25) per user has been reached.'}, 403));
       expect(e.statusCode, 403);
       expect(e.message, contains('Maximum number of todos (25)'));
     });

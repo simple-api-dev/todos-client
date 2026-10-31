@@ -80,7 +80,7 @@ class AppState extends ChangeNotifier {
   /// The API said our token is no longer valid (401 while logged in): drop it.
   void sessionExpired() {
     final api = _api;
-    if (api == null) return;
+    if (api == null || !api.loggedIn) return;
     api.token = null;
     api.userId = null;
     userName = null;

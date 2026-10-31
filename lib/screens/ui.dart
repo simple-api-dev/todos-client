@@ -4,11 +4,12 @@ import '../todos_api.dart';
 
 /// Turns any error into a sentence the user can read.
 ///
-/// Statuses seen from this API: 400 (duplicate email, bad reset code), 401
-/// (bad/missing key, or a token that is no longer valid), 403 (a limit was
-/// reached), 404 (no such todo, or a failed login), 409 (this key uses an
-/// external auth service), 422 (validation, the message says which field)
-/// and 429 (rate limit).
+/// Statuses seen from this API, always with a JSON `{"message"}`: 400
+/// (malformed JSON, bad reset code), 401 (bad/missing key, a token that is no
+/// longer valid, or a failed login), 403 (a limit was reached, or a user_id
+/// that is not yours), 404 (no such todo), 409 (email already registered, or
+/// this key uses an external auth service), 422 (validation, the message says
+/// which field) and 429 (rate limit).
 String describeError(Object e) {
   if (e is! ApiException) return 'Something went wrong: $e';
   switch (e.statusCode) {
@@ -24,7 +25,7 @@ String describeError(Object e) {
     case 404:
       return 'Not found. It may already have been deleted. (${e.message})';
     case 409:
-      return 'Conflict: ${e.message}';
+      return e.message; // e.g. "User registration failed, email already registered to this developer account."
     case 422:
       return e.message; // e.g. "The password must be at least 8 characters."
     case 429:
@@ -34,14 +35,20 @@ String describeError(Object e) {
   }
 }
 
-/// Like [describeError], for the login form: a failed login answers 404
-/// ("Login Failed"), which would read as "not found" if shown as-is.
+/// Like [describeError], for the login form. A failed login is a 401 too
+/// ("Invalid email or password."): it is shown as it is, and it is not an
+/// expired session (nobody is logged in yet). Only a 401 about the key is
+/// explained as a key problem.
 String describeLoginError(Object e) =>
-    e is ApiException && e.statusCode == 404 ? 'Wrong email or password.' : describeError(e);
+    e is ApiException && e.statusCode == 401 && !isKeyProblem(e) ? e.message : describeError(e);
 
-/// True for a 401 caused by the user's token (as opposed to the apikey).
-bool isTokenProblem(ApiException e) =>
-    e.statusCode == 401 && !e.message.toLowerCase().contains('api key') && !e.message.toLowerCase().contains('apikey');
+/// True for a 401 about the apikey (as opposed to the token or a login).
+bool isKeyProblem(ApiException e) =>
+    e.statusCode == 401 && (e.message.toLowerCase().contains('api key') || e.message.toLowerCase().contains('apikey'));
+
+/// True for a 401 caused by the user's token. Only for calls made while logged
+/// in: a failed login is also a 401 and must not be passed through this.
+bool isTokenProblem(ApiException e) => e.statusCode == 401 && !isKeyProblem(e);
 
 void showSnack(BuildContext context, String text) {
   ScaffoldMessenger.of(context)
