@@ -19,7 +19,7 @@ http.Response text(String body, int status) => http.Response(body, status, heade
 const authAnswer = {'name': 'Ann', 'email': 'ann@example.com', 'enabled': true, 'token': 'tok', 'admin': false, 'id': 42};
 
 Map<String, Object?> todoJson(int id, String description, {bool completed = false}) =>
-    {'id': id, 'user_id': 42, 'description': description, 'completed': completed ? 1 : 0, 'author': 'Ann', 'meta': null};
+    {'id': id, 'user_id': 42, 'description': description, 'completed': completed, 'author': 'Ann', 'meta': null};
 
 /// Links the app asked to open.
 final opened = <String>[];
@@ -55,6 +55,9 @@ class FakeServer {
   int nextId = 100;
   http.Response? failNext;
 
+  /// 201 once the register change is deployed, 200 before; the app accepts both.
+  int registerStatus = 201;
+
   http.Response call(http.Request r) {
     final fail = failNext;
     if (fail != null && r.url.path.startsWith('/api/users/42/')) {
@@ -63,14 +66,15 @@ class FakeServer {
     }
     final path = r.url.path;
     if (path == '/api/todos' && r.method == 'GET') return json([]); // the key check
-    if (path == '/api/users/login' || path == '/api/users/register') return json(authAnswer);
+    if (path == '/api/users/login') return json(authAnswer);
+    if (path == '/api/users/register') return json(authAnswer, registerStatus);
     if (path == '/api/users/logout') return json(true);
     if (path == '/api/users/42/todos' && r.method == 'GET') return json(todos);
     if (path == '/api/users/42/todos' && r.method == 'POST') {
       final body = jsonDecode(r.body) as Map;
       final todo = todoJson(nextId++, body['description'] as String, completed: body['completed'] == true);
       todos.add(todo);
-      return json({...todo, 'completed': todo['completed'] == 1}..remove('meta'));
+      return json({...todo}..remove('meta'));
     }
     final one = RegExp(r'^/api/users/42/todos/(\d+)$').firstMatch(path);
     if (one != null) {
@@ -208,12 +212,23 @@ void main() {
     expect(seen.length, before);
   });
 
-  testWidgets('a wrong password (404 Login Failed) reads as wrong email or password', (tester) async {
-    await pumpApp(tester, server: (r) => json({'message': 'Login Failed (ann@example.com)'}, 404));
+  testWidgets('a failed login (401) shows the API message and is not an expired session', (tester) async {
+    await pumpApp(tester, server: (r) => json({'message': 'Invalid email or password.'}, 401));
     await logIn(tester);
 
-    expect(find.text('Wrong email or password.'), findsOneWidget);
+    expect(find.text('Invalid email or password.'), findsOneWidget);
+    expect(find.textContaining('session has ended'), findsNothing);
+    expect(find.textContaining('API key'), findsNothing);
     expect(find.text('Hi, Ann'), findsNothing);
+    // still on the login form, so the user can try again
+    expect(find.widgetWithText(FilledButton, 'Log in'), findsOneWidget);
+  });
+
+  testWidgets('a 401 about the key on the login form is explained as a key problem', (tester) async {
+    await pumpApp(tester, server: (r) => json({'message': 'Request failed.  API Key not found.'}, 401));
+    await logIn(tester);
+
+    expect(find.textContaining('The API key was not accepted'), findsOneWidget);
   });
 
   testWidgets('register shows the validation text for a short password (422)', (tester) async {
@@ -223,10 +238,10 @@ void main() {
     expect(find.text('The password must be at least 8 characters.'), findsOneWidget);
   });
 
-  testWidgets('registering an email twice shows the API message (400)', (tester) async {
+  testWidgets('registering an email twice shows the API message (409)', (tester) async {
     await pumpApp(
       tester,
-      server: (r) => json({'message': 'User registration failed, email already registered to this developer account.'}, 400),
+      server: (r) => json({'message': 'User registration failed, email already registered to this developer account.'}, 409),
     );
     await logIn(tester, register: true);
 
@@ -237,7 +252,39 @@ void main() {
     await pumpApp(tester, server: (r) => json({'message': 'This key uses an external auth service.'}, 409));
     await logIn(tester, register: true);
 
-    expect(find.text('Conflict: This key uses an external auth service.'), findsOneWidget);
+    expect(find.text('This key uses an external auth service.'), findsOneWidget);
+  });
+
+  for (final status in [200, 201]) {
+    testWidgets('register logs the user in when the API answers $status', (tester) async {
+      final server = FakeServer()..registerStatus = status;
+      await pumpApp(tester, server: server.call);
+      await logIn(tester, register: true);
+
+      expect(find.text('Log out'), findsOneWidget);
+      expect(find.text('Create an account'), findsNothing);
+    });
+  }
+
+  testWidgets('a malformed JSON body (400) shows the API message', (tester) async {
+    await pumpApp(tester, server: (r) => json({'message': 'Malformed JSON in the request body.'}, 400));
+    await logIn(tester, register: true);
+
+    expect(find.text('Malformed JSON in the request body.'), findsOneWidget);
+  });
+
+  testWidgets('a user_id that is not yours (403) shows the message and keeps you logged in', (tester) async {
+    final server = FakeServer([todoJson(1, 'Buy milk')]);
+    await pumpApp(tester, server: server.call);
+    await logIn(tester);
+
+    server.failNext = json({'message': 'Forbidden.  The user_id in the path does not belong to this auth token.'}, 403);
+    await tester.tap(find.byTooltip('Delete'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('does not belong to this auth token'), findsOneWidget);
+    expect(find.text('Buy milk'), findsOneWidget);
+    expect(find.text('Log out'), findsOneWidget);
   });
 
   testWidgets('429 asks the user to wait', (tester) async {
@@ -252,7 +299,7 @@ void main() {
     await pumpApp(tester, server: server.call);
     await logIn(tester);
 
-    server.failNext = json({'message': 'Maximum number of todos (25) per user has been reached. (Basic Acct)'}, 403);
+    server.failNext = json({'message': 'Maximum number of todos (25) per user has been reached.'}, 403);
     await tester.enterText(find.widgetWithText(TextField, 'What needs doing?'), 'One too many');
     await tester.tap(find.text('Add'));
     await tester.pumpAndSettle();
@@ -291,12 +338,12 @@ void main() {
     expect(find.textContaining('Not found. It may already have been deleted.'), findsOneWidget);
   });
 
-  testWidgets('a dead token (401 plain text) logs the user out with an explanation', (tester) async {
+  testWidgets('a dead token (401) logs the user out with an explanation', (tester) async {
     final server = FakeServer([todoJson(1, 'Buy milk')]);
     await pumpApp(tester, server: server.call);
     await logIn(tester);
 
-    server.failNext = text('Invalid Auth Token. Unauthorized.2', 401);
+    server.failNext = json({'message': 'Invalid auth token.  Unauthorized.'}, 401);
     await tester.tap(find.byTooltip('Delete'));
     await tester.pumpAndSettle();
 

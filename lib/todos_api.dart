@@ -16,8 +16,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-/// Thrown for any non-2xx answer. [message] is the API's own text when it sent
-/// one, e.g. "Request failed.  API Key not found."
+/// Thrown for any non-2xx answer. [message] is the API's own text,
+/// e.g. "Request failed.  API Key not found."
 class ApiException implements Exception {
   ApiException(this.statusCode, this.message);
 
@@ -35,14 +35,12 @@ class Todo {
   final String description;
   final bool completed;
 
-  /// The API sends `completed` as `true`/`false` on writes but as `0`/`1` on
-  /// reads, so both are accepted.
+  /// `completed` is a real boolean on every route.
   factory Todo.fromJson(Map<String, dynamic> json) {
-    final c = json['completed'];
     return Todo(
       id: (json['id'] as num).toInt(),
       description: '${json['description'] ?? ''}',
-      completed: c == true || c == 1 || c == '1',
+      completed: json['completed'] == true,
     );
   }
 }
@@ -83,14 +81,17 @@ class TodosApi {
   // ------------------------------------------------------------------ users
 
   /// POST /api/users/register - create a user that belongs to this key and log
-  /// in as it. The API allows at most 10 users per key and passwords of 8+
-  /// characters.
+  /// in as it. The API allows at most 10 users per key, passwords of 8+
+  /// characters and an email with a dotted domain. A new user answers 201
+  /// (older deployments answered 200; both are accepted). An email that is
+  /// already registered answers 409.
   Future<AuthResult> register({required String name, required String email, required String password}) async {
     final json = await _send('POST', '/api/users/register', body: {'name': name, 'email': email, 'password': password});
     return _authResult(json);
   }
 
-  /// POST /api/users/login - returns the user's id, name and a token.
+  /// POST /api/users/login - returns the user's id, name and a token. A wrong
+  /// email or password answers 401 "Invalid email or password.".
   Future<AuthResult> login({required String email, required String password}) async {
     final json = await _send('POST', '/api/users/login', body: {'email': email, 'password': password});
     return _authResult(json);
@@ -147,7 +148,8 @@ class TodosApi {
     return [for (final t in (json['_list'] as List? ?? const [])) Todo.fromJson(t as Map<String, dynamic>)];
   }
 
-  /// POST /api/users/{user_id}/todos - add a todo (a user may have 25).
+  /// POST /api/users/{user_id}/todos - add a todo (a user may have 25; the
+  /// 26th is refused with 403).
   Future<Todo> createTodo(String description, {bool completed = false}) async {
     final json = await _send('POST', '$_userPath/todos', body: {'description': description, 'completed': completed});
     return Todo.fromJson(json);
@@ -161,7 +163,6 @@ class TodosApi {
   }
 
   /// DELETE /api/users/{user_id}/todos/{id} - delete one of your todos.
-  /// (The Swagger page documents this as `/todo/{id}`; that path answers 404.)
   Future<void> deleteTodo(int id) async {
     await _send('DELETE', '$_userPath/todos/$id');
   }
@@ -175,8 +176,8 @@ class TodosApi {
   // ---------------------------------------------------------------- plumbing
 
   /// Sends one request and returns the decoded JSON. A JSON array is wrapped
-  /// as `{'_list': [...]}` so every caller gets a Map; a bare string or
-  /// boolean (the API answers `true` to logout) becomes `{}`.
+  /// as `{'_list': [...]}` so every caller gets a Map; a bare boolean (the API
+  /// answers `true` to logout) becomes `{}`.
   Future<Map<String, dynamic>> _send(
     String method,
     String path, {
@@ -204,7 +205,8 @@ class TodosApi {
       try {
         decoded = jsonDecode(text);
       } on FormatException {
-        decoded = text; // some errors are plain text, e.g. "Unauthorized.1"
+        // Every API answer is JSON. Anything else (a proxy's error page, say)
+        // gets the generic message below.
       }
     }
 
@@ -216,14 +218,12 @@ class TodosApi {
     return {};
   }
 
-  /// Errors arrive as `{"message": "..."}`, as a bare JSON string
-  /// (`"Todo 9 not found."`) or as plain text (`Invalid Auth Token...`).
+  /// Every error from the API is JSON: `{"message": "..."}`.
   String _errorMessage(int status, Object? decoded) {
     if (decoded is Map) {
       final message = decoded['message'];
       if (message is String && message.isNotEmpty) return message;
     }
-    if (decoded is String && decoded.isNotEmpty) return decoded;
     return 'Request failed (HTTP $status).';
   }
 }
