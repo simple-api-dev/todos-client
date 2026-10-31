@@ -1,33 +1,26 @@
+/// Small shared widgets and the error wording.
+library;
+
 import 'package:flutter/material.dart';
 
-import '../todos_api.dart';
+import '../models.dart';
 
-/// Turns any error into a sentence the user can read.
-///
-/// Statuses seen from this API, always with a JSON `{"message"}`: 400
-/// (malformed JSON, bad reset code), 401 (bad/missing key, a token that is no
-/// longer valid, or a failed login), 403 (a limit was reached, or a user_id
-/// that is not yours), 404 (no such todo), 409 (email already registered, or
-/// this key uses an external auth service), 422 (validation, the message says
-/// which field) and 429 (rate limit).
+/// The same wording as the other SimpleAPI samples. 400, 403, 409 and 422 show
+/// the API's own message, which is already a clear sentence.
 String describeError(Object e) {
-  if (e is! ApiException) return 'Something went wrong: $e';
+  if (e is! ApiException) return 'Something went wrong. Please try again.';
   switch (e.statusCode) {
     case 401:
       return isTokenProblem(e)
           ? 'Your session has ended. Please log in again.'
-          : 'The API key was not accepted. Check it under Settings. (${e.message})';
+          : 'The API key was not accepted. Check it under Settings.';
     case 400:
     case 403:
-      // The message is already a clear sentence, e.g. "Maximum number of todos
-      // (25) per user has been reached." or "...email already registered...".
+    case 409:
+    case 422:
       return e.message;
     case 404:
-      return 'Not found. It may already have been deleted. (${e.message})';
-    case 409:
-      return e.message; // e.g. "User registration failed, email already registered to this developer account."
-    case 422:
-      return e.message; // e.g. "The password must be at least 8 characters."
+      return 'Not found. It may already have been deleted.';
     case 429:
       return 'Too many requests. Wait a few seconds and try again.';
     default:
@@ -50,6 +43,15 @@ bool isKeyProblem(ApiException e) =>
 /// in: a failed login is also a 401 and must not be passed through this.
 bool isTokenProblem(ApiException e) => e.statusCode == 401 && !isKeyProblem(e);
 
+/// Shown above the log in and register forms while the shared demo key is used.
+const demoNotice = 'Demo accounts are shared and public. Do not use a real password or any private details.';
+
+/// Shown instead of the API's message when the demo key has no room for more users.
+const demoFullMessage = 'The demo is full. Get a free key to try the sample with your own users.';
+
+/// True when a register answer means the key holds all the users it may have.
+bool isUserLimit(ApiException e) => e.statusCode == 403 && e.message.toLowerCase().contains('user accounts');
+
 void showSnack(BuildContext context, String text) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
@@ -68,11 +70,14 @@ class ErrorView extends StatelessWidget {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(describeError(error), textAlign: TextAlign.center),
-          const SizedBox(height: 12),
-          OutlinedButton(onPressed: onRetry, child: const Text('Try again')),
-        ]),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(describeError(error), textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            OutlinedButton(onPressed: onRetry, child: const Text('Try again')),
+          ],
+        ),
       ),
     );
   }
@@ -85,6 +90,8 @@ class Centered extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) =>
-      Align(alignment: Alignment.topCenter, child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: child));
+  Widget build(BuildContext context) => Align(
+    alignment: Alignment.topCenter,
+    child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: child),
+  );
 }

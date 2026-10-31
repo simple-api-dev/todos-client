@@ -3,9 +3,10 @@
 /// Docs: https://todos.simpleapi.dev/docs
 ///
 /// Two rules apply to every request:
-///  * the developer key goes in the `apikey` QUERY parameter (never a header);
+///  * the API key goes in the `apikey` query string (never a header);
 ///  * a logged-in user also sends `Authorization: Bearer <token>`, where the
-///    token comes from [TodosApi.register] / [TodosApi.login].
+///    token comes from [TodosApi.register] / [TodosApi.login]. Those two calls
+///    never send a bearer token themselves.
 ///
 /// The todo calls used here are the per-user ones (`/api/users/{user_id}/...`).
 /// The `{user_id}` is always the logged-in user's own id, taken from the
@@ -16,54 +17,13 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-/// Thrown for any non-2xx answer. [message] is the API's own text,
-/// e.g. "Request failed.  API Key not found."
-class ApiException implements Exception {
-  ApiException(this.statusCode, this.message);
+import 'models.dart';
 
-  final int statusCode;
-  final String message;
-
-  @override
-  String toString() => message;
-}
-
-class Todo {
-  const Todo({required this.id, required this.description, required this.completed});
-
-  final int id;
-  final String description;
-  final bool completed;
-
-  /// `completed` is a real boolean on every route.
-  factory Todo.fromJson(Map<String, dynamic> json) {
-    return Todo(
-      id: (json['id'] as num).toInt(),
-      description: '${json['description'] ?? ''}',
-      completed: json['completed'] == true,
-    );
-  }
-}
-
-/// What login / register answer with. [token] is null only for a 2xx answer
-/// that carried no token.
-class AuthResult {
-  const AuthResult({this.token, this.id, this.name = '', this.message = ''});
-
-  final String? token;
-  final int? id;
-  final String name;
-  final String message;
-}
+export 'models.dart';
 
 class TodosApi {
-  TodosApi({
-    required this.apiKey,
-    this.token,
-    this.userId,
-    http.Client? client,
-    this.host = 'todos.simpleapi.dev',
-  }) : _http = client ?? http.Client();
+  TodosApi({required this.apiKey, this.token, this.userId, http.Client? client, this.host = 'todos.simpleapi.dev'})
+    : _http = client ?? http.Client();
 
   final String apiKey;
   final String host;
@@ -81,19 +41,28 @@ class TodosApi {
   // ------------------------------------------------------------------ users
 
   /// POST /api/users/register - create a user that belongs to this key and log
-  /// in as it. The API allows at most 10 users per key, passwords of 8+
-  /// characters and an email with a dotted domain. A new user answers 201
-  /// (older deployments answered 200; both are accepted). An email that is
-  /// already registered answers 409.
+  /// in as it. A key holds 25 users; passwords need 8+ characters and the email
+  /// a dotted domain. A new user answers 201. An email that is already
+  /// registered answers 409.
   Future<AuthResult> register({required String name, required String email, required String password}) async {
-    final json = await _send('POST', '/api/users/register', body: {'name': name, 'email': email, 'password': password});
+    final json = await _send(
+      'POST',
+      '/api/users/register',
+      authenticated: false,
+      body: {'name': name, 'email': email, 'password': password},
+    );
     return _authResult(json);
   }
 
   /// POST /api/users/login - returns the user's id, name and a token. A wrong
   /// email or password answers 401 "Invalid email or password.".
   Future<AuthResult> login({required String email, required String password}) async {
-    final json = await _send('POST', '/api/users/login', body: {'email': email, 'password': password});
+    final json = await _send(
+      'POST',
+      '/api/users/login',
+      authenticated: false,
+      body: {'email': email, 'password': password},
+    );
     return _authResult(json);
   }
 
@@ -182,11 +151,12 @@ class TodosApi {
     String method,
     String path, {
     Map<String, Object?>? body,
+    bool authenticated = true,
   }) async {
     final uri = Uri.https(host, path, {'apikey': apiKey});
     final request = http.Request(method, uri)
       ..headers['Accept'] = 'application/json'
-      ..headers.addAll({if (token != null) 'Authorization': 'Bearer $token'});
+      ..headers.addAll({if (authenticated && token != null) 'Authorization': 'Bearer $token'});
     if (body != null) {
       request.headers['Content-Type'] = 'application/json';
       request.body = jsonEncode(body);
@@ -196,7 +166,7 @@ class TodosApi {
     try {
       response = await http.Response.fromStream(await _http.send(request));
     } catch (e) {
-      throw ApiException(0, 'Could not reach $host ($e)');
+      throw ApiException(0, 'Could not reach $host. Check your connection and try again.');
     }
 
     final text = response.body.trim();

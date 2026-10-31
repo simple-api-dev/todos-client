@@ -1,3 +1,6 @@
+/// The app widget: theme and the single home screen.
+library;
+
 import 'package:flutter/material.dart';
 
 import 'app_state.dart';
@@ -13,17 +16,13 @@ class TodosApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SimpleApi Todos sample',
-      theme: ThemeData(colorSchemeSeed: Colors.teal, useMaterial3: true),
+      title: 'SimpleAPI Todos sample',
+      theme: ThemeData(colorSchemeSeed: const Color(0xFF0066CC), useMaterial3: true),
       // The app opens straight on content. A new keyVersion rebuilds the list
       // so it reloads when the key changes.
       home: ListenableBuilder(
         listenable: state,
-        builder: (context, _) => TodosScreen(
-          key: ValueKey(state.keyVersion),
-          state: state,
-          openUrl: openUrl,
-        ),
+        builder: (context, _) => TodosScreen(key: ValueKey(state.keyVersion), state: state, openUrl: openUrl),
       ),
     );
   }

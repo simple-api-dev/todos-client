@@ -1,3 +1,6 @@
+/// The settings screen: use your own API key.
+library;
+
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
@@ -5,7 +8,7 @@ import '../config.dart';
 import '../open_url.dart';
 import 'ui.dart';
 
-/// Settings: use your own SimpleApi key instead of the demo's. It is checked
+/// Settings: use your own SimpleAPI key instead of the demo's. It is checked
 /// with one real call (GET /api/todos) and then kept only in this
 /// browser's localStorage.
 class SettingsScreen extends StatefulWidget {
@@ -52,7 +55,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final current = state.usingOwnKey
         ? 'You are using your own key.'
         : state.hasBuildKey
-        ? 'You are using the demo key this site was built with.'
+        ? 'You are using the shared demo key.'
         : 'No key is configured.';
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -60,36 +63,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            const Text(
-              'Use your own key',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-            ),
+            const Text('Use your own key', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             Text(
               '$current Your key is stored only in this browser (localStorage) and sent only to todos.simpleapi.dev.',
             ),
             const SizedBox(height: 8),
-            TextButton(
-              onPressed: () => widget.openUrl(getKeyUrl),
-              child: const Text('Get a free key'),
-            ),
+            TextButton(onPressed: () => widget.openUrl(getKeyUrl), child: const Text('Get a free key')),
             const SizedBox(height: 8),
             TextField(
               controller: _controller,
-              decoration: InputDecoration(
-                labelText: 'API key',
-                border: const OutlineInputBorder(),
-                errorText: _error,
-              ),
+              decoration: InputDecoration(labelText: 'API key', border: const OutlineInputBorder(), errorText: _error),
               onSubmitted: (_) => _save(),
             ),
             const SizedBox(height: 16),
             Row(
               children: [
-                FilledButton(
-                  onPressed: _busy ? null : _save,
-                  child: Text(_busy ? 'Checking...' : 'Save key'),
-                ),
+                FilledButton(onPressed: _busy ? null : _save, child: Text(_busy ? 'Checking...' : 'Save key')),
                 const SizedBox(width: 12),
                 if (state.usingOwnKey)
                   TextButton(
@@ -97,11 +87,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       state.useBuildKey();
                       Navigator.of(context).pop();
                     },
-                    child: Text(
-                      state.hasBuildKey
-                          ? 'Go back to the demo key'
-                          : 'Forget my key',
-                    ),
+                    child: const Text('Remove my key'),
                   ),
               ],
             ),

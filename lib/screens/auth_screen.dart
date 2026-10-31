@@ -1,11 +1,15 @@
+/// The log in and register screen.
+library;
+
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
+import '../models.dart';
 import 'forgot_screen.dart';
 import 'ui.dart';
 
 /// Log in or register. Users belong to your key, so you can register freely
-/// (a key allows 10 users). Passwords need 8+ characters.
+/// (a key allows 25 users). Passwords need 8+ characters.
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key, required this.state, this.startAsRegister = false});
 
@@ -50,7 +54,9 @@ class _AuthScreenState extends State<AuthScreen> {
       widget.state.loggedInAs(result.name.isEmpty ? 'you' : result.name);
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
-      if (mounted) setState(() => _error = _register ? describeError(e) : describeLoginError(e));
+      if (!mounted) return;
+      final full = _register && !widget.state.usingOwnKey && e is ApiException && isUserLimit(e);
+      setState(() => _error = full ? demoFullMessage : (_register ? describeError(e) : describeLoginError(e)));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -61,44 +67,64 @@ class _AuthScreenState extends State<AuthScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(_register ? 'Register' : 'Log in')),
       body: Centered(
-        child: ListView(padding: const EdgeInsets.all(24), children: [
-          if (_register) ...[
-            TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name', border: OutlineInputBorder())),
-            const SizedBox(height: 12),
-          ],
-          TextField(
-            controller: _email,
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _password,
-            obscureText: true,
-            decoration: InputDecoration(
-              labelText: 'Password',
-              helperText: _register ? 'At least 8 characters' : null,
-              border: const OutlineInputBorder(),
-            ),
-            onSubmitted: (_) => _submit(),
-          ),
-          if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
-          const SizedBox(height: 16),
-          Wrap(spacing: 12, crossAxisAlignment: WrapCrossAlignment.center, children: [
-            FilledButton(onPressed: _busy ? null : _submit, child: Text(_register ? 'Register' : 'Log in')),
-            TextButton(
-              onPressed: () => setState(() => _register = !_register),
-              child: Text(_register ? 'I already have an account' : 'Create an account'),
-            ),
-            if (!_register)
-              TextButton(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => ForgotScreen(state: widget.state, email: _email.text.trim())),
-                ),
-                child: const Text('Forgot password?'),
+        child: ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            if (!widget.state.usingOwnKey) ...[
+              const Text(demoNotice, key: Key('demo-notice')),
+              const SizedBox(height: 16),
+            ],
+            if (_register) ...[
+              TextField(
+                controller: _name,
+                decoration: const InputDecoration(labelText: 'Name', border: OutlineInputBorder()),
               ),
-          ]),
-        ]),
+              const SizedBox(height: 12),
+            ],
+            TextField(
+              controller: _email,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _password,
+              obscureText: true,
+              decoration: InputDecoration(
+                labelText: 'Password',
+                helperText: _register ? 'At least 8 characters' : null,
+                border: const OutlineInputBorder(),
+              ),
+              onSubmitted: (_) => _submit(),
+            ),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 12,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                FilledButton(onPressed: _busy ? null : _submit, child: Text(_register ? 'Register' : 'Log in')),
+                TextButton(
+                  onPressed: () => setState(() => _register = !_register),
+                  child: Text(_register ? 'I already have an account' : 'Create an account'),
+                ),
+                if (!_register)
+                  TextButton(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => ForgotScreen(state: widget.state, email: _email.text.trim()),
+                      ),
+                    ),
+                    child: const Text('Forgot password?'),
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
