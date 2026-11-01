@@ -32,12 +32,12 @@ http.Response text(String body, int status) => http.Response(body, status, heade
 void main() {
   test('sends the key as the apikey query parameter, not as a header', () async {
     final (api, seen) = apiWith((_) => json([]));
-    await api.checkKey();
+    await api.login(email: 'a@example.com', password: 'secret-pass');
 
     final r = seen.single;
-    expect(r.method, 'GET');
+    expect(r.method, 'POST');
     expect(r.url.host, 'todos.simpleapi.dev');
-    expect(r.url.path, '/api/todos');
+    expect(r.url.path, '/api/users/login');
     expect(r.url.queryParameters['apikey'], fakeKey);
     expect(r.headers.containsKey('Authorization'), isFalse);
     expect(r.headers.values.any((v) => v.contains(fakeKey)), isFalse);
@@ -80,7 +80,7 @@ void main() {
   test('a network failure message names the host and leaks no exception text', () async {
     final api = TodosApi(apiKey: fakeKey, client: MockClient((_) async => throw Exception('socket detail')));
     await expectLater(
-      api.checkKey(),
+      api.login(email: 'a@example.com', password: 'secret-pass'),
       throwsA(
         isA<ApiException>().having(
           (e) => e.message,
@@ -304,6 +304,9 @@ void main() {
 
   test('a network failure becomes an ApiException with status 0', () async {
     final api = TodosApi(apiKey: fakeKey, client: MockClient((_) async => throw http.ClientException('offline')));
-    await expectLater(api.checkKey(), throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 0)));
+    await expectLater(
+      api.login(email: 'a@example.com', password: 'secret-pass'),
+      throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 0)),
+    );
   });
 }

@@ -36,6 +36,21 @@ class _AuthScreenState extends State<AuthScreen> {
     super.dispose();
   }
 
+  Future<void> _demo() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await widget.state.loginDemo();
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      if (mounted) setState(() => _error = describeLoginError(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _submit() async {
     setState(() {
       _busy = true;
@@ -55,7 +70,7 @@ class _AuthScreenState extends State<AuthScreen> {
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
-      final full = _register && !widget.state.usingOwnKey && e is ApiException && isUserLimit(e);
+      final full = _register && e is ApiException && isUserLimit(e);
       setState(() => _error = full ? demoFullMessage : (_register ? describeError(e) : describeLoginError(e)));
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -70,10 +85,8 @@ class _AuthScreenState extends State<AuthScreen> {
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            if (!widget.state.usingOwnKey) ...[
-              const Text(demoNotice, key: Key('demo-notice')),
-              const SizedBox(height: 16),
-            ],
+            const Text(demoNotice, key: Key('demo-notice')),
+            const SizedBox(height: 16),
             if (_register) ...[
               TextField(
                 controller: _name,
@@ -112,6 +125,8 @@ class _AuthScreenState extends State<AuthScreen> {
                   onPressed: () => setState(() => _register = !_register),
                   child: Text(_register ? 'I already have an account' : 'Create an account'),
                 ),
+                if (!_register)
+                  OutlinedButton(onPressed: _busy ? null : _demo, child: const Text('Try the demo account')),
                 if (!_register)
                   TextButton(
                     onPressed: () => Navigator.of(context).push(

@@ -100,14 +100,6 @@ class TodosApi {
     return '${json['message'] ?? 'Password updated.'}';
   }
 
-  // ------------------------------------------------------------------- keys
-
-  /// GET /api/todos - needs only the key. Used by Settings as a one-call check
-  /// that a pasted key is accepted (a bad key answers 401).
-  Future<void> checkKey() async {
-    await _send('GET', '/api/todos');
-  }
-
   // ------------------------------------------------------------------ todos
   // Everything below needs a logged-in user (Bearer token).
 

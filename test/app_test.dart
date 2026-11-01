@@ -6,7 +6,6 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:todos_client/app.dart';
 import 'package:todos_client/app_state.dart';
-import 'package:todos_client/key_store.dart';
 
 // All HTTP is mocked; nothing here calls the real API.
 
@@ -40,7 +39,6 @@ final opened = <String>[];
 /// [buildKey] stands in for the key passed with --dart-define at build time.
 Future<List<http.Request>> pumpApp(
   WidgetTester tester, {
-  KeyStore? store,
   String buildKey = 'build-key',
   required http.Response Function(http.Request) server,
 }) async {
@@ -53,7 +51,7 @@ Future<List<http.Request>> pumpApp(
     seen.add(r);
     return server(r);
   });
-  final state = AppState(store: store ?? MemoryKeyStore(), buildKey: buildKey, client: client);
+  final state = AppState(apiKey: buildKey, client: client);
   await tester.pumpWidget(TodosApp(state: state, openUrl: opened.add));
   await tester.pumpAndSettle();
   return seen;
@@ -118,11 +116,6 @@ Future<void> logIn(WidgetTester tester, {bool register = false}) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> openSettings(WidgetTester tester) async {
-  await tester.tap(find.text('Settings'));
-  await tester.pumpAndSettle();
-}
-
 void main() {
   testWidgets('opens straight on the page, logged out, using the build-time key without calling anything', (
     tester,
@@ -131,19 +124,87 @@ void main() {
 
     expect(find.text('Your todos'), findsOneWidget);
     expect(find.text('Create an account'), findsOneWidget);
-    expect(find.text('This demo has no key configured'), findsNothing);
     expect(seen, isEmpty);
   });
 
-  testWidgets('without any key it explains so, links to get one, and calls nothing', (tester) async {
-    final seen = await pumpApp(tester, buildKey: '', server: FakeServer().call);
+  testWidgets('the landing screen makes the demo account the main action and shows the demo notice', (tester) async {
+    await pumpApp(tester, server: FakeServer().call);
 
-    expect(find.text('This demo has no key configured'), findsOneWidget);
-    expect(find.text('Log in / Register'), findsNothing);
-    expect(seen, isEmpty);
+    expect(find.widgetWithText(FilledButton, 'Try the demo account'), findsOneWidget);
+    expect(find.byKey(const Key('demo-notice')), findsOneWidget);
+    expect(
+      find.text('This is a shared demo. Data resets every night. Do not use a real password or any private details.'),
+      findsOneWidget,
+    );
+  });
 
-    await tester.tap(find.text('Get a free key'));
-    expect(opened, ['https://keys.simpleapi.dev/?product=todos']);
+  testWidgets('"Try the demo account" logs in as the demo user in one click and shows their list', (tester) async {
+    final server = FakeServer([todoJson(1, 'Water the plants', completed: true)]);
+    final seen = await pumpApp(tester, server: server.call);
+
+    await tester.tap(find.text('Try the demo account'));
+    await tester.pumpAndSettle();
+
+    final login = seen.firstWhere((r) => r.url.path == '/api/users/login');
+    expect(jsonDecode(login.body), {'email': 'demo@simpleapi.dev', 'password': 'try-the-demo'});
+    expect(login.headers.containsKey('Authorization'), isFalse);
+    expect(find.text('Water the plants'), findsOneWidget);
+    expect(find.text('Log out'), findsOneWidget);
+  });
+
+  testWidgets('the log in screen also offers the demo account and shows the demo notice', (tester) async {
+    final server = FakeServer([todoJson(1, 'Water the plants')]);
+    await pumpApp(tester, server: server.call);
+    await tester.tap(find.text('Log in / Register'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('demo-notice')), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Try the demo account'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Water the plants'), findsOneWidget);
+  });
+
+  testWidgets('the register screen shows the demo notice', (tester) async {
+    await pumpApp(tester, server: FakeServer().call);
+    await tester.tap(find.text('Log in / Register'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create an account'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('demo-notice')), findsOneWidget);
+  });
+
+  testWidgets('a failed demo login shows the API message', (tester) async {
+    await pumpApp(tester, server: (_) => json({'message': 'Invalid email or password.'}, 401));
+    await tester.tap(find.text('Try the demo account'));
+    await tester.pumpAndSettle();
+    expect(find.text('Invalid email or password.'), findsOneWidget);
+  });
+
+  testWidgets('the back arrow opens the SimpleAPI home page, with a tooltip', (tester) async {
+    await pumpApp(tester, server: FakeServer().call);
+
+    expect(find.byTooltip('Back to SimpleAPI'), findsOneWidget);
+    await tester.tap(find.byTooltip('Back to SimpleAPI'));
+    expect(opened, ['https://simpleapi.dev']);
+  });
+
+  testWidgets('at 360px wide the app bar shows the full title and fits its actions, logged out and in', (tester) async {
+    await pumpApp(tester, server: FakeServer().call);
+    tester.view.physicalSize = const Size(360, 640);
+    await tester.pumpAndSettle();
+
+    // The test font is about twice as wide as Roboto, so this checks the layout (no overflow, nothing cut
+    // off) rather than exact widths. In Roboto the title is about 137px and leaves room for the actions.
+    expect(find.text('SimpleAPI Todos'), findsOneWidget);
+    expect(find.text('Log in / Register'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text('Try the demo account'));
+    await tester.pumpAndSettle();
+    expect(find.text('SimpleAPI Todos'), findsOneWidget);
+    expect(find.text('Log out'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('register, then the empty list is shown; every call carries the key and the right user id', (
@@ -284,23 +345,6 @@ void main() {
     expect(find.text('Create an account'), findsNothing);
   });
 
-  testWidgets('the shared demo key shows the public demo accounts notice; an own key does not', (tester) async {
-    await pumpApp(tester, server: FakeServer().call);
-    await tester.tap(find.text('Log in / Register'));
-    await tester.pumpAndSettle();
-    expect(
-      find.text('Demo accounts are shared and public. Do not use a real password or any private details.'),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('no demo notice when the visitor uses their own key', (tester) async {
-    await pumpApp(tester, store: MemoryKeyStore('own-key'), server: FakeServer().call);
-    await tester.tap(find.text('Log in / Register'));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('demo-notice')), findsNothing);
-  });
-
   testWidgets('a full demo key (403 on register) shows the demo-full message', (tester) async {
     await pumpApp(
       tester,
@@ -309,7 +353,7 @@ void main() {
     );
     await logIn(tester, register: true);
 
-    expect(find.text('The demo is full. Get a free key to try the sample with your own users.'), findsOneWidget);
+    expect(find.text('The demo is full. It resets every night.'), findsOneWidget);
   });
 
   testWidgets('login and register never send the bearer token, even after a session ended', (tester) async {
@@ -482,72 +526,5 @@ void main() {
 
     expect(find.text('Invalid or expired reset code.'), findsOneWidget);
     expect(find.text('Set new password'), findsOneWidget);
-  });
-
-  group('Settings', () {
-    testWidgets('a key saved in this browser overrides the build key', (tester) async {
-      final seen = await pumpApp(tester, store: MemoryKeyStore('own-key'), server: FakeServer().call);
-      await logIn(tester);
-
-      expect(seen.every((r) => r.url.queryParameters['apikey'] == 'own-key'), isTrue);
-    });
-
-    testWidgets('saving a key checks it with GET /api/todos, stores it and uses it', (tester) async {
-      final store = MemoryKeyStore();
-      final seen = await pumpApp(tester, store: store, server: FakeServer().call);
-      await openSettings(tester);
-      expect(find.textContaining('You are using the shared demo key.'), findsOneWidget);
-
-      await tester.enterText(find.widgetWithText(TextField, 'API key'), 'my-key');
-      await tester.tap(find.text('Save key'));
-      await tester.pumpAndSettle();
-
-      expect(seen.single.method, 'GET');
-      expect(seen.single.url.path, '/api/todos');
-      expect(seen.single.url.queryParameters['apikey'], 'my-key');
-      expect(store.read(), 'my-key');
-
-      await logIn(tester);
-      expect(seen.last.url.queryParameters['apikey'], 'my-key');
-    });
-
-    testWidgets('a rejected key (401) shows the error and is not stored', (tester) async {
-      final store = MemoryKeyStore();
-      await pumpApp(
-        tester,
-        store: store,
-        server: (_) => json({
-          'message': 'Unauthorized. Please provide a valid apikey. Get a free key at https://keys.simpleapi.dev/?product=todos',
-        }, 401),
-      );
-      await openSettings(tester);
-      await tester.enterText(find.widgetWithText(TextField, 'API key'), 'bad-key');
-      await tester.tap(find.text('Save key'));
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('The API key was not accepted'), findsOneWidget);
-      expect(find.textContaining('The API key was not accepted'), findsOneWidget);
-    });
-
-    testWidgets('"Remove my key" forgets the saved key', (tester) async {
-      final store = MemoryKeyStore('own-key');
-      final seen = await pumpApp(tester, store: store, server: FakeServer().call);
-      await openSettings(tester);
-      expect(find.textContaining('You are using your own key.'), findsOneWidget);
-
-      await tester.tap(find.text('Remove my key'));
-      await tester.pumpAndSettle();
-
-      expect(store.read(), isNull);
-      await logIn(tester);
-      expect(seen.last.url.queryParameters['apikey'], 'build-key');
-    });
-
-    testWidgets('"Get a free key" opens the key page for the todos product', (tester) async {
-      await pumpApp(tester, server: FakeServer().call);
-      await openSettings(tester);
-      await tester.tap(find.text('Get a free key'));
-      expect(opened, ['https://keys.simpleapi.dev/?product=todos']);
-    });
   });
 }
