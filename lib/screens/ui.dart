@@ -47,14 +47,29 @@ bool isKeyProblem(ApiException e) =>
 /// in: a failed login is also a 401 and must not be passed through this.
 bool isTokenProblem(ApiException e) => e.statusCode == 401 && !isKeyProblem(e);
 
-/// Shown above the log in and register forms.
-const demoNotice = 'This is a shared demo. Data resets every night. Do not use a real password or any private details.';
+/// Said on the log in and register screens. Same wording in all the SimpleAPI demos.
+const demoNoticeText =
+    'This is a shared demo. Data resets every night. Do not use a real password or any private details.';
 
 /// Shown instead of the API's message when the demo key has no room for more users.
 const demoFullMessage = 'The demo is full. It resets every night.';
 
 /// True when a register answer means the key holds all the users it may have.
 bool isUserLimit(ApiException e) => e.statusCode == 403 && e.message.toLowerCase().contains('users per key');
+
+class DemoNotice extends StatelessWidget {
+  const DemoNotice({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: scheme.secondaryContainer, borderRadius: BorderRadius.circular(8)),
+      child: Text(demoNoticeText, style: TextStyle(color: scheme.onSecondaryContainer)),
+    );
+  }
+}
 
 void showSnack(BuildContext context, String text) {
   ScaffoldMessenger.of(context)
@@ -100,13 +115,14 @@ class BackToSimpleApi extends StatelessWidget {
 
 /// Centers page content in a readable column on wide screens.
 class Centered extends StatelessWidget {
-  const Centered({super.key, required this.child});
+  const Centered({super.key, required this.child, this.maxWidth = 720});
 
   final Widget child;
+  final double maxWidth;
 
   @override
   Widget build(BuildContext context) => Align(
     alignment: Alignment.topCenter,
-    child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: child),
+    child: ConstrainedBox(constraints: BoxConstraints(maxWidth: maxWidth), child: child),
   );
 }

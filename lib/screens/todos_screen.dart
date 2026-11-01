@@ -263,7 +263,7 @@ class _LoggedOut extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
-            const Text(demoNotice, key: Key('demo-notice'), textAlign: TextAlign.center),
+            const Text(demoNoticeText, key: Key('demo-notice'), textAlign: TextAlign.center),
           ],
         ),
       ),

@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:todos_client/app.dart';
 import 'package:todos_client/app_state.dart';
+import 'package:todos_client/screens/ui.dart';
 
 // All HTTP is mocked; nothing here calls the real API.
 
@@ -125,6 +126,31 @@ Future<void> logIn(WidgetTester tester, {bool register = false}) async {
   await tester.pumpAndSettle();
 }
 
+/// The login screen every SimpleAPI demo shares: same order, same widths, and no overflow at 360px.
+Future<void> expectSharedLoginLayout(WidgetTester tester) async {
+  final demo = find.widgetWithText(FilledButton, 'Try the demo account');
+  final logIn = find.widgetWithText(FilledButton, 'Log in');
+  final order = [
+    demo,
+    find.byType(Divider),
+    find.text(demoNoticeText),
+    find.widgetWithText(TextField, 'Email'),
+    find.widgetWithText(TextField, 'Password'),
+    logIn,
+  ];
+  final tops = [for (final item in order) tester.getTopLeft(item).dy];
+  expect(tops, [...tops]..sort());
+  expect(tester.getTopLeft(find.widgetWithText(TextButton, 'Create an account')).dy, greaterThanOrEqualTo(tops.last));
+
+  expect(tester.getSize(demo).width, 512); // 560 wide with 24 of padding
+  expect(tester.getSize(find.widgetWithText(TextField, 'Email')).width, 512);
+  expect(tester.getSize(logIn).width, lessThan(512));
+
+  tester.view.physicalSize = const Size(360, 800);
+  await tester.pump();
+  expect(tester.getSize(demo).width, 312);
+}
+
 void main() {
   testWidgets('opens straight on the page, logged out, using the build-time key without calling anything', (
     tester,
@@ -168,19 +194,27 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('demo-notice')), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Try the demo account'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Try the demo account'));
     await tester.pumpAndSettle();
 
     expect(find.text('Water the plants'), findsOneWidget);
   });
 
-  testWidgets('the register screen shows the demo notice', (tester) async {
+  testWidgets('the log in form follows the shared login layout', (tester) async {
+    await pumpApp(tester, server: FakeServer().call);
+    await tester.tap(find.text('Log in / Register'));
+    await tester.pumpAndSettle();
+    await expectSharedLoginLayout(tester);
+  });
+
+  testWidgets('the register screen shows the demo notice and the demo button', (tester) async {
     await pumpApp(tester, server: FakeServer().call);
     await tester.tap(find.text('Log in / Register'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Create an account'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('demo-notice')), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Try the demo account'), findsOneWidget);
   });
 
   testWidgets('a failed demo login shows the API message', (tester) async {
@@ -512,6 +546,23 @@ void main() {
     expect(seen.last.url.path, '/api/users/reset');
     expect(jsonDecode(seen.last.body), {'email': 'ann@example.com', 'code': '123456', 'password': 'new-password'});
     expect(find.textContaining('Password updated. You can log in now.'), findsOneWidget);
+  });
+
+  testWidgets('a reset refused for the demo account (403) shows the API message', (tester) async {
+    await pumpApp(
+      tester,
+      server: (r) => json({'message': 'The demo account cannot be changed.'}, 403),
+    );
+    await tester.tap(find.text('Log in / Register'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Forgot password?'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Email'), 'demo@simpleapi.dev');
+    await tester.tap(find.text('Email me a code'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('The demo account cannot be changed.'), findsOneWidget);
+    expect(find.text('Set new password'), findsNothing);
   });
 
   testWidgets('a wrong reset code (400) is shown and the form stays', (tester) async {

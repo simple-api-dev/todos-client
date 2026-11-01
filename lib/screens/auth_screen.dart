@@ -82,10 +82,13 @@ class _AuthScreenState extends State<AuthScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(_register ? 'Register' : 'Log in')),
       body: Centered(
+        maxWidth: 560,
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            const Text(demoNotice, key: Key('demo-notice')),
+            FilledButton(onPressed: _busy ? null : _demo, child: const Text('Try the demo account')),
+            const Divider(height: 32),
+            const DemoNotice(key: Key('demo-notice')),
             const SizedBox(height: 16),
             if (_register) ...[
               TextField(
@@ -118,6 +121,7 @@ class _AuthScreenState extends State<AuthScreen> {
             const SizedBox(height: 16),
             Wrap(
               spacing: 12,
+              runSpacing: 4,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 FilledButton(onPressed: _busy ? null : _submit, child: Text(_register ? 'Register' : 'Log in')),
@@ -125,8 +129,6 @@ class _AuthScreenState extends State<AuthScreen> {
                   onPressed: () => setState(() => _register = !_register),
                   child: Text(_register ? 'I already have an account' : 'Create an account'),
                 ),
-                if (!_register)
-                  OutlinedButton(onPressed: _busy ? null : _demo, child: const Text('Try the demo account')),
                 if (!_register)
                   TextButton(
                     onPressed: () => Navigator.of(context).push(
