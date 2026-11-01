@@ -8,15 +8,10 @@ import 'package:todos_client/todos_api.dart';
 // A made-up value: the tests never touch the real API or a real key.
 const fakeKey = 'test-key';
 
-// Statuses and bodies below were observed from the live API
-// (see tool/live_check/REPORT.md).
+// All HTTP is mocked; nothing here calls the real API.
 
 /// Builds an API whose HTTP client answers with [handler] and records requests.
-(TodosApi, List<http.Request>) apiWith(
-  http.Response Function(http.Request) handler, {
-  String? token,
-  int? userId,
-}) {
+(TodosApi, List<http.Request>) apiWith(http.Response Function(http.Request) handler, {String? token, int? userId}) {
   final seen = <http.Request>[];
   final client = MockClient((request) async {
     seen.add(request);
@@ -51,7 +46,14 @@ void main() {
   test('login stores the token and the user id, and later calls use both', () async {
     final (api, seen) = apiWith((r) {
       if (r.url.path == '/api/users/login') {
-        return json({'id': 456, 'name': 'Check A', 'email': 'a@example.com', 'enabled': true, 'token': 'tok-1', 'admin': false});
+        return json({
+          'id': 456,
+          'name': 'Check A',
+          'email': 'a@example.com',
+          'enabled': true,
+          'token': 'tok-1',
+          'admin': false,
+        });
       }
       return json([]);
     });
@@ -67,17 +69,39 @@ void main() {
     expect(r.headers['Authorization'], 'Bearer tok-1');
   });
 
-  for (final status in [200, 201]) {
-    test('register logs in on a $status answer', () async {
-      final (api, _) = apiWith((_) => json({'name': 'A', 'email': 'a@example.com', 'enabled': true, 'token': 'tok-r', 'admin': false, 'id': 456}, status));
-      final result = await api.register(name: 'A', email: 'a@example.com', password: 'secret-pass');
-      expect(result.token, 'tok-r');
-      expect(api.loggedIn, isTrue);
-    });
-  }
+  test('login and register never send a bearer token, even if one is set', () async {
+    final (api, seen) = apiWith((r) => json({'name': 'A', 'token': 'tok-new', 'id': 456}), token: 'old-tok', userId: 1);
+    await api.login(email: 'a@example.com', password: 'secret-pass');
+    await api.register(name: 'A', email: 'a@example.com', password: 'secret-pass');
+    expect(seen.length, 2);
+    expect(seen.every((r) => !r.headers.containsKey('Authorization')), isTrue);
+  });
+
+  test('a network failure message names the host and leaks no exception text', () async {
+    final api = TodosApi(apiKey: fakeKey, client: MockClient((_) async => throw Exception('socket detail')));
+    await expectLater(
+      api.checkKey(),
+      throwsA(
+        isA<ApiException>().having(
+          (e) => e.message,
+          'message',
+          'Could not reach todos.simpleapi.dev. Check your connection and try again.',
+        ),
+      ),
+    );
+  });
 
   test('register sends name, email and password and logs in', () async {
-    final (api, seen) = apiWith((_) => json({'name': 'Check A', 'email': 'a@example.com', 'enabled': true, 'token': 'tok-r', 'admin': false, 'id': 456}, 201));
+    final (api, seen) = apiWith(
+      (_) => json({
+        'name': 'Check A',
+        'email': 'a@example.com',
+        'enabled': true,
+        'token': 'tok-r',
+        'admin': false,
+        'id': 456,
+      }, 201),
+    );
     final result = await api.register(name: 'Check A', email: 'a@example.com', password: 'secret-pass');
 
     expect(seen.single.method, 'POST');
@@ -92,14 +116,23 @@ void main() {
     final (api, _) = apiWith((_) => json({'message': 'Invalid email or password.'}, 401));
     await expectLater(
       api.login(email: 'a@example.com', password: 'wrong-pass'),
-      throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 401).having((e) => e.message, 'message', 'Invalid email or password.')),
+      throwsA(
+        isA<ApiException>()
+            .having((e) => e.statusCode, 'status', 401)
+            .having((e) => e.message, 'message', 'Invalid email or password.'),
+      ),
     );
     expect(api.loggedIn, isFalse);
   });
 
   test('a duplicate register throws the 409', () async {
-    final (api, _) = apiWith((_) => json({'message': 'User registration failed, email already registered to this developer account.'}, 409));
-    await expectLater(api.register(name: 'A', email: 'a@example.com', password: 'secret-pass'), throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 409)));
+    final (api, _) = apiWith(
+      (_) => json({'message': 'User registration failed, email already registered to this developer account.'}, 409),
+    );
+    await expectLater(
+      api.register(name: 'A', email: 'a@example.com', password: 'secret-pass'),
+      throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 409)),
+    );
   });
 
   test('a 2xx answer without a token is reported, not treated as a login', () async {
@@ -124,10 +157,12 @@ void main() {
   });
 
   test('listTodos parses the list; completed is a real boolean', () async {
-    final (api, seen) = loggedIn((_) => json([
-          {'id': 3260, 'user_id': 42, 'description': 'first todo', 'completed': false, 'author': 'Check A', 'meta': null},
-          {'id': 3261, 'user_id': 42, 'description': 'second', 'completed': true, 'author': 'Check A', 'meta': null},
-        ]));
+    final (api, seen) = loggedIn(
+      (_) => json([
+        {'id': 3260, 'user_id': 42, 'description': 'first todo', 'completed': false, 'author': 'Check A', 'meta': null},
+        {'id': 3261, 'user_id': 42, 'description': 'second', 'completed': true, 'author': 'Check A', 'meta': null},
+      ]),
+    );
     final todos = await api.listTodos();
 
     expect(seen.single.method, 'GET');
@@ -138,7 +173,9 @@ void main() {
   });
 
   test('createTodo posts the description and parses the boolean answer', () async {
-    final (api, seen) = loggedIn((_) => json({'description': 'first todo', 'completed': false, 'user_id': 42, 'author': 'Check A', 'id': 3260}));
+    final (api, seen) = loggedIn(
+      (_) => json({'description': 'first todo', 'completed': false, 'user_id': 42, 'author': 'Check A', 'id': 3260}),
+    );
     final todo = await api.createTodo('first todo');
 
     expect(seen.single.method, 'POST');
@@ -149,7 +186,9 @@ void main() {
   });
 
   test('updateTodo puts the description and the completed flag', () async {
-    final (api, seen) = loggedIn((_) => json({'id': 3260, 'user_id': 42, 'description': 'first todo', 'completed': true, 'author': 'Check A'}));
+    final (api, seen) = loggedIn(
+      (_) => json({'id': 3260, 'user_id': 42, 'description': 'first todo', 'completed': true, 'author': 'Check A'}),
+    );
     final todo = await api.updateTodo(3260, description: 'first todo', completed: true);
 
     expect(seen.single.method, 'PUT');
@@ -167,9 +206,11 @@ void main() {
   });
 
   test('forgot and reset post the right bodies', () async {
-    final (api, seen) = apiWith((r) => r.url.path.endsWith('forgot')
-        ? json({'message': 'If an account exists for that email, a reset code has been sent.'})
-        : json({'message': 'Password updated.'}));
+    final (api, seen) = apiWith(
+      (r) => r.url.path.endsWith('forgot')
+          ? json({'message': 'If an account exists for that email, a reset code has been sent.'})
+          : json({'message': 'Password updated.'}),
+    );
 
     expect(await api.forgotPassword('a@example.com'), startsWith('If an account exists'));
     expect(seen.last.url.path, '/api/users/forgot');
@@ -198,9 +239,13 @@ void main() {
     }
 
     test('401 missing key: JSON message', () async {
-      final e = await failing(json({'message': 'Unauthorized.  Please provide a valid apikey.  Visit todos.simpleapi.dev/get-key for your free apikey today.'}, 401));
+      final e = await failing(
+        json({
+          'message': 'Unauthorized. Please provide a valid apikey. Get a free key at https://keys.simpleapi.dev/?product=todos',
+        }, 401),
+      );
       expect(e.statusCode, 401);
-      expect(e.message, startsWith('Unauthorized.  Please provide a valid apikey'));
+      expect(e.message, startsWith('Unauthorized. Please provide a valid apikey'));
     });
 
     test('401 bad token: JSON message', () async {
@@ -221,7 +266,9 @@ void main() {
     });
 
     test('403: a user_id that is not the token\'s user', () async {
-      final e = await failing(json({'message': 'Forbidden.  The user_id in the path does not belong to this auth token.'}, 403));
+      final e = await failing(
+        json({'message': 'Forbidden.  The user_id in the path does not belong to this auth token.'}, 403),
+      );
       expect(e.statusCode, 403);
     });
 

@@ -46,6 +46,3 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
-
-# Written by tool/live_check/live_check.dart; the report keeps the table.
-tool/live_check/results.md

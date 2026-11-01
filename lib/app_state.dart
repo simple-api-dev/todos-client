@@ -1,3 +1,6 @@
+/// The shared app state: which API key is in use and who is logged in.
+library;
+
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
@@ -13,10 +16,7 @@ import 'todos_api.dart';
 class AppState extends ChangeNotifier {
   AppState({required this.store, this.buildKey = configuredKey, this._client}) {
     final own = store.read();
-    _useKey(
-      own != null && own.isNotEmpty ? own : buildKey,
-      own: own != null && own.isNotEmpty,
-    );
+    _useKey(own != null && own.isNotEmpty ? own : buildKey, own: own != null && own.isNotEmpty);
   }
 
   final KeyStore store;

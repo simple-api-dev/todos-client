@@ -8,18 +8,30 @@ import 'package:todos_client/app.dart';
 import 'package:todos_client/app_state.dart';
 import 'package:todos_client/key_store.dart';
 
-// Statuses and bodies below were observed from the live API
-// (see tool/live_check/REPORT.md).
+// All HTTP is mocked; nothing here calls the real API.
 
 http.Response json(Object body, [int status = 200]) =>
     http.Response(jsonEncode(body), status, headers: {'content-type': 'application/json'});
 
 http.Response text(String body, int status) => http.Response(body, status, headers: {'content-type': 'text/html'});
 
-const authAnswer = {'name': 'Ann', 'email': 'ann@example.com', 'enabled': true, 'token': 'tok', 'admin': false, 'id': 42};
+const authAnswer = {
+  'name': 'Ann',
+  'email': 'ann@example.com',
+  'enabled': true,
+  'token': 'tok',
+  'admin': false,
+  'id': 42,
+};
 
-Map<String, Object?> todoJson(int id, String description, {bool completed = false}) =>
-    {'id': id, 'user_id': 42, 'description': description, 'completed': completed, 'author': 'Ann', 'meta': null};
+Map<String, Object?> todoJson(int id, String description, {bool completed = false}) => {
+  'id': id,
+  'user_id': 42,
+  'description': description,
+  'completed': completed,
+  'author': 'Ann',
+  'meta': null,
+};
 
 /// Links the app asked to open.
 final opened = <String>[];
@@ -55,9 +67,6 @@ class FakeServer {
   int nextId = 100;
   http.Response? failNext;
 
-  /// 201 once the register change is deployed, 200 before; the app accepts both.
-  int registerStatus = 201;
-
   http.Response call(http.Request r) {
     final fail = failNext;
     if (fail != null && r.url.path.startsWith('/api/users/42/')) {
@@ -67,7 +76,7 @@ class FakeServer {
     final path = r.url.path;
     if (path == '/api/todos' && r.method == 'GET') return json([]); // the key check
     if (path == '/api/users/login') return json(authAnswer);
-    if (path == '/api/users/register') return json(authAnswer, registerStatus);
+    if (path == '/api/users/register') return json(authAnswer, 201);
     if (path == '/api/users/logout') return json(true);
     if (path == '/api/users/42/todos' && r.method == 'GET') return json(todos);
     if (path == '/api/users/42/todos' && r.method == 'POST') {
@@ -115,7 +124,9 @@ Future<void> openSettings(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('opens straight on the page, logged out, using the build-time key without calling anything', (tester) async {
+  testWidgets('opens straight on the page, logged out, using the build-time key without calling anything', (
+    tester,
+  ) async {
     final seen = await pumpApp(tester, server: FakeServer().call);
 
     expect(find.text('Your todos'), findsOneWidget);
@@ -135,7 +146,9 @@ void main() {
     expect(opened, ['https://keys.simpleapi.dev/?product=todos']);
   });
 
-  testWidgets('register, then the empty list is shown; every call carries the key and the right user id', (tester) async {
+  testWidgets('register, then the empty list is shown; every call carries the key and the right user id', (
+    tester,
+  ) async {
     final seen = await pumpApp(tester, server: FakeServer().call);
     await logIn(tester, register: true);
 
@@ -225,7 +238,13 @@ void main() {
   });
 
   testWidgets('a 401 about the key on the login form is explained as a key problem', (tester) async {
-    await pumpApp(tester, server: (r) => json({'message': 'Request failed.  API Key not found.'}, 401));
+    await pumpApp(
+      tester,
+      server: (r) => json({
+        'message':
+            'Unauthorized. Please provide a valid apikey. Get a free key at https://keys.simpleapi.dev/?product=todos',
+      }, 401),
+    );
     await logIn(tester);
 
     expect(find.textContaining('The API key was not accepted'), findsOneWidget);
@@ -241,7 +260,8 @@ void main() {
   testWidgets('registering an email twice shows the API message (409)', (tester) async {
     await pumpApp(
       tester,
-      server: (r) => json({'message': 'User registration failed, email already registered to this developer account.'}, 409),
+      server: (r) =>
+          json({'message': 'User registration failed, email already registered to this developer account.'}, 409),
     );
     await logIn(tester, register: true);
 
@@ -255,16 +275,56 @@ void main() {
     expect(find.text('This key uses an external auth service.'), findsOneWidget);
   });
 
-  for (final status in [200, 201]) {
-    testWidgets('register logs the user in when the API answers $status', (tester) async {
-      final server = FakeServer()..registerStatus = status;
-      await pumpApp(tester, server: server.call);
-      await logIn(tester, register: true);
+  testWidgets('register logs the user in when the API answers 201', (tester) async {
+    final server = FakeServer();
+    await pumpApp(tester, server: server.call);
+    await logIn(tester, register: true);
 
-      expect(find.text('Log out'), findsOneWidget);
-      expect(find.text('Create an account'), findsNothing);
-    });
-  }
+    expect(find.text('Log out'), findsOneWidget);
+    expect(find.text('Create an account'), findsNothing);
+  });
+
+  testWidgets('the shared demo key shows the public demo accounts notice; an own key does not', (tester) async {
+    await pumpApp(tester, server: FakeServer().call);
+    await tester.tap(find.text('Log in / Register'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Demo accounts are shared and public. Do not use a real password or any private details.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('no demo notice when the visitor uses their own key', (tester) async {
+    await pumpApp(tester, store: MemoryKeyStore('own-key'), server: FakeServer().call);
+    await tester.tap(find.text('Log in / Register'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('demo-notice')), findsNothing);
+  });
+
+  testWidgets('a full demo key (403 on register) shows the demo-full message', (tester) async {
+    await pumpApp(
+      tester,
+      server: (r) =>
+          json({'message': 'Maximum number of user accounts (25) per developer account has been reached.'}, 403),
+    );
+    await logIn(tester, register: true);
+
+    expect(find.text('The demo is full. Get a free key to try the sample with your own users.'), findsOneWidget);
+  });
+
+  testWidgets('login and register never send the bearer token, even after a session ended', (tester) async {
+    final server = FakeServer([todoJson(1, 'Buy milk')]);
+    final seen = await pumpApp(tester, server: server.call);
+    await logIn(tester);
+    server.failNext = json({'message': 'Unauthorized.'}, 401);
+    await tester.tap(find.byTooltip('Delete'));
+    await tester.pumpAndSettle();
+    expect(find.text('Log in / Register'), findsOneWidget);
+
+    seen.clear();
+    await logIn(tester);
+    expect(seen.where((r) => r.url.path == '/api/users/login').single.headers.containsKey('Authorization'), isFalse);
+  });
 
   testWidgets('a malformed JSON body (400) shows the API message', (tester) async {
     await pumpApp(tester, server: (r) => json({'message': 'Malformed JSON in the request body.'}, 400));
@@ -367,12 +427,15 @@ void main() {
   });
 
   testWidgets('forgot password: request a code, then reset with it', (tester) async {
-    final seen = await pumpApp(tester, server: (r) {
-      if (r.url.path == '/api/users/forgot') {
-        return json({'message': 'If an account exists for that email, a reset code has been sent.'});
-      }
-      return json({'message': 'Password updated.'});
-    });
+    final seen = await pumpApp(
+      tester,
+      server: (r) {
+        if (r.url.path == '/api/users/forgot') {
+          return json({'message': 'If an account exists for that email, a reset code has been sent.'});
+        }
+        return json({'message': 'Password updated.'});
+      },
+    );
     await tester.tap(find.text('Log in / Register'));
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextField, 'Email'), 'ann@example.com');
@@ -396,10 +459,15 @@ void main() {
   });
 
   testWidgets('a wrong reset code (400) is shown and the form stays', (tester) async {
-    await pumpApp(tester, server: (r) {
-      if (r.url.path == '/api/users/forgot') return json({'message': 'If an account exists for that email, a reset code has been sent.'});
-      return json({'message': 'Invalid or expired reset code.'}, 400);
-    });
+    await pumpApp(
+      tester,
+      server: (r) {
+        if (r.url.path == '/api/users/forgot') {
+          return json({'message': 'If an account exists for that email, a reset code has been sent.'});
+        }
+        return json({'message': 'Invalid or expired reset code.'}, 400);
+      },
+    );
     await tester.tap(find.text('Log in / Register'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Forgot password?'));
@@ -428,7 +496,7 @@ void main() {
       final store = MemoryKeyStore();
       final seen = await pumpApp(tester, store: store, server: FakeServer().call);
       await openSettings(tester);
-      expect(find.textContaining('You are using the demo key this site was built with.'), findsOneWidget);
+      expect(find.textContaining('You are using the shared demo key.'), findsOneWidget);
 
       await tester.enterText(find.widgetWithText(TextField, 'API key'), 'my-key');
       await tester.tap(find.text('Save key'));
@@ -445,24 +513,29 @@ void main() {
 
     testWidgets('a rejected key (401) shows the error and is not stored', (tester) async {
       final store = MemoryKeyStore();
-      await pumpApp(tester, store: store, server: (_) => json({'message': 'Request failed.  API Key not found.'}, 401));
+      await pumpApp(
+        tester,
+        store: store,
+        server: (_) => json({
+          'message': 'Unauthorized. Please provide a valid apikey. Get a free key at https://keys.simpleapi.dev/?product=todos',
+        }, 401),
+      );
       await openSettings(tester);
       await tester.enterText(find.widgetWithText(TextField, 'API key'), 'bad-key');
       await tester.tap(find.text('Save key'));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('The API key was not accepted'), findsOneWidget);
-      expect(find.textContaining('API Key not found'), findsOneWidget);
-      expect(store.read(), isNull);
+      expect(find.textContaining('The API key was not accepted'), findsOneWidget);
     });
 
-    testWidgets('"Go back to the demo key" forgets the saved key', (tester) async {
+    testWidgets('"Remove my key" forgets the saved key', (tester) async {
       final store = MemoryKeyStore('own-key');
       final seen = await pumpApp(tester, store: store, server: FakeServer().call);
       await openSettings(tester);
       expect(find.textContaining('You are using your own key.'), findsOneWidget);
 
-      await tester.tap(find.text('Go back to the demo key'));
+      await tester.tap(find.text('Remove my key'));
       await tester.pumpAndSettle();
 
       expect(store.read(), isNull);

@@ -1,3 +1,6 @@
+/// Entry point of the Todos sample app.
+library;
+
 import 'package:flutter/material.dart';
 
 import 'app.dart';

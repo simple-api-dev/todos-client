@@ -1,3 +1,6 @@
+/// The browser (localStorage) key store.
+library;
+
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 

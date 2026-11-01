@@ -1,46 +1,39 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
   <base href="$FLUTTER_BASE_HREF">
-
   <meta charset="UTF-8">
-  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="Sample Flutter web app for the SimpleApi Todos API">
-
-  <!-- iOS meta tags & icons -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Todos API sample | Flutter web | SimpleAPI</title>
+  <meta name="description" content="A small Flutter web app that shows how to call the free SimpleAPI Todos API from a browser, with no backend of your own.">
+  <meta name="theme-color" content="#0066cc">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="SimpleAPI">
+  <meta property="og:title" content="Todos API sample | SimpleAPI">
+  <meta property="og:description" content="A small Flutter web app that shows how to call the free SimpleAPI Todos API from a browser, with no backend of your own.">
+  <meta property="og:url" content="https://simple-api-dev.github.io/todos-client/">
+  <meta property="og:image" content="https://simple-api-dev.github.io/todos-client/icons/og-image.png">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Todos sample">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
-
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
-
-  <title>SimpleApi Todos sample</title>
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/icon-16.png">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="manifest" href="manifest.json">
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; }
+    #loading { display: flex; align-items: center; justify-content: center; height: 100vh; color: #0066cc; }
+  </style>
 </head>
 <body>
-  <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
-
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
-  -->
+  <div id="loading">Loading...</div>
+  <script>
+    window.addEventListener("flutter-first-frame", function () {
+      var el = document.getElementById("loading");
+      if (el) el.remove();
+    });
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

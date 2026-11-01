@@ -1,3 +1,6 @@
+/// Build-time configuration: the demo key and where to get a key.
+library;
+
 /// The demo key baked in at build time:
 ///
 ///     flutter build web --dart-define=SIMPLEAPI_KEY=<your key>

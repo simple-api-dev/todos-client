@@ -1,3 +1,6 @@
+/// The todo list screen.
+library;
+
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
@@ -59,7 +62,8 @@ class _TodosScreenState extends State<TodosScreen> {
     try {
       return _todos = await state.api.listTodos();
     } on ApiException catch (e) {
-      if (isTokenProblem(e)) state.sessionExpired();
+      // a 401 while logged in means the session is over
+      if (e.statusCode == 401) state.sessionExpired();
       rethrow;
     }
   }
@@ -70,7 +74,7 @@ class _TodosScreenState extends State<TodosScreen> {
     try {
       await action();
     } catch (e) {
-      if (e is ApiException && isTokenProblem(e)) state.sessionExpired();
+      if (e is ApiException && e.statusCode == 401) state.sessionExpired();
       if (mounted) showSnack(context, describeError(e));
     }
   }
@@ -92,7 +96,10 @@ class _TodosScreenState extends State<TodosScreen> {
 
   // PUT /api/users/{user_id}/todos/{id}  (new text)
   Future<void> _edit(Todo t) async {
-    final text = await showDialog<String>(context: context, builder: (_) => _EditDialog(initial: t.description));
+    final text = await showDialog<String>(
+      context: context,
+      builder: (_) => _EditDialog(initial: t.description),
+    );
     if (text == null || text == t.description) return;
     await _run(() async {
       final saved = await state.api.updateTodo(t.id, description: text, completed: t.completed);
@@ -103,13 +110,20 @@ class _TodosScreenState extends State<TodosScreen> {
   // DELETE /api/users/{user_id}/todos/{id}
   Future<void> _delete(Todo t) => _run(() async {
     await state.api.deleteTodo(t.id);
-    setState(() => _todos = [for (final x in _todos) if (x.id != t.id) x]);
+    setState(
+      () => _todos = [
+        for (final x in _todos)
+          if (x.id != t.id) x,
+      ],
+    );
   });
 
   void _reload() => setState(() => _future = _load());
 
   void _openAuth({bool register = false}) => Navigator.of(context).push(
-    MaterialPageRoute<void>(builder: (_) => AuthScreen(state: state, startAsRegister: register)),
+    MaterialPageRoute<void>(
+      builder: (_) => AuthScreen(state: state, startAsRegister: register),
+    ),
   );
 
   @override
@@ -127,7 +141,9 @@ class _TodosScreenState extends State<TodosScreen> {
               TextButton(onPressed: _openAuth, child: const Text('Log in / Register')),
             TextButton(
               onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => SettingsScreen(state: state, openUrl: widget.openUrl)),
+                MaterialPageRoute<void>(
+                  builder: (_) => SettingsScreen(state: state, openUrl: widget.openUrl),
+                ),
               ),
               child: const Text('Settings'),
             ),
@@ -141,47 +157,62 @@ class _TodosScreenState extends State<TodosScreen> {
   Widget _body() {
     if (!state.hasKey) return _NoKey(openUrl: widget.openUrl);
     if (!state.loggedIn) return _LoggedOut(onLogin: _openAuth, onRegister: () => _openAuth(register: true));
-    return Column(children: [
-      Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(children: [
-          Expanded(
-            child: TextField(
-              controller: _newText,
-              decoration: const InputDecoration(labelText: 'What needs doing?', border: OutlineInputBorder()),
-              onSubmitted: (_) => _add(),
-            ),
-          ),
-          const SizedBox(width: 8),
-          FilledButton(onPressed: _add, child: const Text('Add')),
-        ]),
-      ),
-      Expanded(
-        child: FutureBuilder<List<Todo>>(
-          future: _future,
-          builder: (context, snap) {
-            if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
-            if (snap.hasError) return ErrorView(error: snap.error!, onRetry: _reload);
-            if (_todos.isEmpty) return const Center(child: Text('No todos yet. Add your first one above.'));
-            return ListView(children: [
-              for (final t in _todos)
-                ListTile(
-                  key: ValueKey(t.id),
-                  leading: Checkbox(value: t.completed, onChanged: (_) => _toggle(t)),
-                  title: Text(
-                    t.description,
-                    style: t.completed ? const TextStyle(decoration: TextDecoration.lineThrough, color: Colors.grey) : null,
-                  ),
-                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                    IconButton(tooltip: 'Edit', icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(t)),
-                    IconButton(tooltip: 'Delete', icon: const Icon(Icons.delete_outline), onPressed: () => _delete(t)),
-                  ]),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _newText,
+                  decoration: const InputDecoration(labelText: 'What needs doing?', border: OutlineInputBorder()),
+                  onSubmitted: (_) => _add(),
                 ),
-            ]);
-          },
+              ),
+              const SizedBox(width: 8),
+              FilledButton(onPressed: _add, child: const Text('Add')),
+            ],
+          ),
         ),
-      ),
-    ]);
+        Expanded(
+          child: FutureBuilder<List<Todo>>(
+            future: _future,
+            builder: (context, snap) {
+              if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
+              if (snap.hasError) return ErrorView(error: snap.error!, onRetry: _reload);
+              if (_todos.isEmpty) return const Center(child: Text('No todos yet. Add your first one above.'));
+              return ListView(
+                children: [
+                  for (final t in _todos)
+                    ListTile(
+                      key: ValueKey(t.id),
+                      leading: Checkbox(value: t.completed, onChanged: (_) => _toggle(t)),
+                      title: Text(
+                        t.description,
+                        style: t.completed
+                            ? const TextStyle(decoration: TextDecoration.lineThrough, color: Colors.grey)
+                            : null,
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(tooltip: 'Edit', icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(t)),
+                          IconButton(
+                            tooltip: 'Delete',
+                            icon: const Icon(Icons.delete_outline),
+                            onPressed: () => _delete(t),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -196,20 +227,26 @@ class _LoggedOut extends StatelessWidget {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('Your todos', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          const Text(
-            'This sample talks to the free SimpleApi Todos API. Every todo belongs to a user, so create a free '
-            'account (any email address, it is not verified) or log in to see your list.',
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          Wrap(spacing: 12, children: [
-            FilledButton(onPressed: onRegister, child: const Text('Create an account')),
-            OutlinedButton(onPressed: onLogin, child: const Text('Log in')),
-          ]),
-        ]),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Your todos', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            const Text(
+              'This sample talks to the free SimpleAPI Todos API. Every todo belongs to a user, so create a free '
+              'account (any email address, it is not verified) or log in to see your list.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 12,
+              children: [
+                FilledButton(onPressed: onRegister, child: const Text('Create an account')),
+                OutlinedButton(onPressed: onLogin, child: const Text('Log in')),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -225,13 +262,16 @@ class _NoKey extends StatelessWidget {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('This demo has no key configured', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          const Text('Get a free key, then paste it under Settings.', textAlign: TextAlign.center),
-          const SizedBox(height: 12),
-          TextButton(onPressed: () => openUrl(getKeyUrl), child: const Text('Get a free key')),
-        ]),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('This demo has no key configured', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            const Text('Get a free key, then paste it under Settings.', textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            FilledButton(onPressed: () => openUrl(getKeyUrl), child: const Text('Get a free key')),
+          ],
+        ),
       ),
     );
   }
@@ -260,7 +300,11 @@ class _EditDialogState extends State<_EditDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Edit todo'),
-      content: TextField(controller: _controller, autofocus: true, decoration: const InputDecoration(labelText: 'Description')),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        decoration: const InputDecoration(labelText: 'Description'),
+      ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
         FilledButton(onPressed: () => Navigator.pop(context, _controller.text.trim()), child: const Text('Save')),
