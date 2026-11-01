@@ -1,4 +1,4 @@
-/// Build-time configuration: the demo key and where to get a key.
+/// Build-time configuration: the demo key and the shared demo account.
 library;
 
 /// The demo key baked in at build time:
@@ -9,5 +9,9 @@ library;
 /// passed this way ends up in the compiled JavaScript, so use a free demo key.
 const configuredKey = String.fromEnvironment('SIMPLEAPI_KEY');
 
-/// Where developers get their own free key for this API.
-const getKeyUrl = 'https://keys.simpleapi.dev/?product=todos';
+// The shared demo account. Public by design: anyone may log in as this user.
+const demoEmail = 'demo@simpleapi.dev';
+const demoPassword = 'try-the-demo';
+
+/// The SimpleAPI home page, opened by the back arrow.
+const homeUrl = 'https://simpleapi.dev';

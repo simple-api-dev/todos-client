@@ -4,11 +4,9 @@ library;
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
-import '../config.dart';
 import '../open_url.dart';
 import '../todos_api.dart';
 import 'auth_screen.dart';
-import 'settings_screen.dart';
 import 'ui.dart';
 
 /// The landing screen: your todo list. Logged out it explains itself and
@@ -118,6 +116,15 @@ class _TodosScreenState extends State<TodosScreen> {
     );
   });
 
+  // POST /api/users/login as the shared demo user
+  Future<void> _demo() async {
+    try {
+      await state.loginDemo();
+    } catch (e) {
+      if (mounted) showSnack(context, describeLoginError(e));
+    }
+  }
+
   void _reload() => setState(() => _future = _load());
 
   void _openAuth({bool register = false}) => Navigator.of(context).push(
@@ -132,21 +139,25 @@ class _TodosScreenState extends State<TodosScreen> {
       listenable: state,
       builder: (context, _) => Scaffold(
         appBar: AppBar(
-          title: const Text('Todos'),
+          leading: BackToSimpleApi(openUrl: widget.openUrl),
+          title: const Text('SimpleAPI Todos'),
           actions: [
-            if (state.hasKey && state.loggedIn) ...[
-              Center(child: Text('Hi, ${state.userName ?? 'you'}')),
-              TextButton(onPressed: state.logout, child: const Text('Log out')),
-            ] else if (state.hasKey)
-              TextButton(onPressed: _openAuth, child: const Text('Log in / Register')),
-            TextButton(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => SettingsScreen(state: state, openUrl: widget.openUrl),
-                ),
+            if (state.loggedIn) ...[
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 64),
+                child: Center(child: Text('Hi, ${state.userName ?? 'you'}', overflow: TextOverflow.ellipsis)),
               ),
-              child: const Text('Settings'),
-            ),
+              TextButton(
+                onPressed: state.logout,
+                style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                child: const Text('Log out'),
+              ),
+            ] else
+              TextButton(
+                onPressed: _openAuth,
+                style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                child: const Text('Log in / Register'),
+              ),
           ],
         ),
         body: Centered(child: _body()),
@@ -155,8 +166,9 @@ class _TodosScreenState extends State<TodosScreen> {
   }
 
   Widget _body() {
-    if (!state.hasKey) return _NoKey(openUrl: widget.openUrl);
-    if (!state.loggedIn) return _LoggedOut(onLogin: _openAuth, onRegister: () => _openAuth(register: true));
+    if (!state.loggedIn) {
+      return _LoggedOut(onDemo: _demo, onLogin: _openAuth, onRegister: () => _openAuth(register: true));
+    }
     return Column(
       children: [
         Padding(
@@ -217,15 +229,17 @@ class _TodosScreenState extends State<TodosScreen> {
 }
 
 class _LoggedOut extends StatelessWidget {
-  const _LoggedOut({required this.onLogin, required this.onRegister});
+  const _LoggedOut({required this.onDemo, required this.onLogin, required this.onRegister});
 
+  final VoidCallback onDemo;
   final VoidCallback onLogin;
   final VoidCallback onRegister;
 
   @override
   Widget build(BuildContext context) {
+    // Scrolls on short screens so nothing is cut off.
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -233,43 +247,23 @@ class _LoggedOut extends StatelessWidget {
             const Text('Your todos', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             const Text(
-              'This sample talks to the free SimpleAPI Todos API. Every todo belongs to a user, so create a free '
-              'account (any email address, it is not verified) or log in to see your list.',
+              'This sample talks to the free SimpleAPI Todos API. Every todo belongs to a user: try the shared demo '
+              'account in one click, or create your own account (any email address, it is not verified).',
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
+            FilledButton(onPressed: onDemo, child: const Text('Try the demo account')),
+            const SizedBox(height: 12),
             Wrap(
               spacing: 12,
+              alignment: WrapAlignment.center,
               children: [
-                FilledButton(onPressed: onRegister, child: const Text('Create an account')),
+                OutlinedButton(onPressed: onRegister, child: const Text('Create an account')),
                 OutlinedButton(onPressed: onLogin, child: const Text('Log in')),
               ],
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _NoKey extends StatelessWidget {
-  const _NoKey({required this.openUrl});
-
-  final UrlOpener openUrl;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('This demo has no key configured', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            const Text('Get a free key, then paste it under Settings.', textAlign: TextAlign.center),
-            const SizedBox(height: 12),
-            FilledButton(onPressed: () => openUrl(getKeyUrl), child: const Text('Get a free key')),
+            const SizedBox(height: 16),
+            const Text(demoNotice, key: Key('demo-notice'), textAlign: TextAlign.center),
           ],
         ),
       ),

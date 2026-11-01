@@ -17,13 +17,14 @@ class TodosApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'SimpleAPI Todos sample',
-      theme: ThemeData(colorSchemeSeed: const Color(0xFF0066CC), useMaterial3: true),
-      // The app opens straight on content. A new keyVersion rebuilds the list
-      // so it reloads when the key changes.
-      home: ListenableBuilder(
-        listenable: state,
-        builder: (context, _) => TodosScreen(key: ValueKey(state.keyVersion), state: state, openUrl: openUrl),
+      theme: ThemeData(
+        colorSchemeSeed: const Color(0xFF0066CC),
+        useMaterial3: true,
+        // A slightly smaller title so "SimpleAPI Todos" never truncates at 360px wide.
+        appBarTheme: const AppBarTheme(titleTextStyle: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
       ),
+      // The app opens straight on content.
+      home: TodosScreen(state: state, openUrl: openUrl),
     );
   }
 }

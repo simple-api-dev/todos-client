@@ -3,7 +3,9 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../config.dart';
 import '../models.dart';
+import '../open_url.dart';
 
 /// The same wording as the other SimpleAPI samples. 400, 403, 409 and 422 show
 /// the API's own message, which is already a clear sentence.
@@ -13,7 +15,7 @@ String describeError(Object e) {
     case 401:
       return isTokenProblem(e)
           ? 'Your session has ended. Please log in again.'
-          : 'The API key was not accepted. Check it under Settings.';
+          : 'The API key was not accepted.';
     case 400:
     case 403:
     case 409:
@@ -43,11 +45,11 @@ bool isKeyProblem(ApiException e) =>
 /// in: a failed login is also a 401 and must not be passed through this.
 bool isTokenProblem(ApiException e) => e.statusCode == 401 && !isKeyProblem(e);
 
-/// Shown above the log in and register forms while the shared demo key is used.
-const demoNotice = 'Demo accounts are shared and public. Do not use a real password or any private details.';
+/// Shown above the log in and register forms.
+const demoNotice = 'This is a shared demo. Data resets every night. Do not use a real password or any private details.';
 
 /// Shown instead of the API's message when the demo key has no room for more users.
-const demoFullMessage = 'The demo is full. Get a free key to try the sample with your own users.';
+const demoFullMessage = 'The demo is full. It resets every night.';
 
 /// True when a register answer means the key holds all the users it may have.
 bool isUserLimit(ApiException e) => e.statusCode == 403 && e.message.toLowerCase().contains('user accounts');
@@ -81,6 +83,17 @@ class ErrorView extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The leading app bar item of a top-level screen: back to the SimpleAPI home page.
+class BackToSimpleApi extends StatelessWidget {
+  const BackToSimpleApi({super.key, required this.openUrl});
+
+  final UrlOpener openUrl;
+
+  @override
+  Widget build(BuildContext context) =>
+      IconButton(tooltip: 'Back to SimpleAPI', icon: const Icon(Icons.arrow_back), onPressed: () => openUrl(homeUrl));
 }
 
 /// Centers page content in a readable column on wide screens.

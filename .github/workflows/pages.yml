@@ -35,7 +35,7 @@ jobs:
       # The site lives at https://simple-api-dev.github.io/todos-client/
       # The demo key comes from the SIMPLEAPI_KEY repository variable (Settings,
       # Secrets and variables, Actions, Variables). It is compiled into the
-      # public JavaScript, so use a free demo key. Unset means "no key" mode.
+      # public JavaScript, so use a free demo key. Unset builds an app the API refuses (401).
       - run: >
           flutter build web --release --base-href /todos-client/
           --dart-define=SIMPLEAPI_KEY=${{ vars.SIMPLEAPI_KEY }}
