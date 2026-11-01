@@ -42,8 +42,8 @@ class TodosApi {
 
   /// POST /api/users/register - create a user that belongs to this key and log
   /// in as it. A key holds 25 users; passwords need 8+ characters and the email
-  /// a dotted domain. A new user answers 201. An email that is already
-  /// registered answers 409.
+  /// a dotted domain. A new user answers 201 with `{token, expires_at, user}`.
+  /// An email that is already registered answers 409.
   Future<AuthResult> register({required String name, required String email, required String password}) async {
     final json = await _send(
       'POST',
@@ -54,8 +54,8 @@ class TodosApi {
     return _authResult(json);
   }
 
-  /// POST /api/users/login - returns the user's id, name and a token. A wrong
-  /// email or password answers 401 "Invalid email or password.".
+  /// POST /api/users/login - answers `{token, expires_at, user}`. A wrong email
+  /// or password answers 401 "Invalid email or password.".
   Future<AuthResult> login({required String email, required String password}) async {
     final json = await _send(
       'POST',
@@ -66,7 +66,8 @@ class TodosApi {
     return _authResult(json);
   }
 
-  /// POST /api/users/logout - invalidates the current token.
+  /// POST /api/users/logout - ends this session. Other sessions of the user
+  /// stay logged in.
   Future<void> logout() async {
     try {
       await _send('POST', '/api/users/logout');
@@ -78,11 +79,12 @@ class TodosApi {
 
   AuthResult _authResult(Map<String, dynamic> json) {
     final t = json['token'];
-    final id = json['id'];
+    final user = json['user'];
+    final id = user is Map ? user['id'] : null;
     if (t is String && t.isNotEmpty && id is num) {
       token = t;
       userId = id.toInt();
-      return AuthResult(token: t, id: userId, name: '${json['name'] ?? ''}');
+      return AuthResult(token: t, id: userId, name: '${user['name'] ?? ''}');
     }
     return AuthResult(message: '${json['message'] ?? 'No token was returned.'}');
   }
@@ -103,10 +105,12 @@ class TodosApi {
   // ------------------------------------------------------------------ todos
   // Everything below needs a logged-in user (Bearer token).
 
-  /// GET /api/users/{user_id}/todos - the logged-in user's todos.
+  /// GET /api/users/{user_id}/todos - the logged-in user's todos. A list
+  /// answers `{data, total, page, per_page}`. The first page holds 25 rows,
+  /// which is every todo a free tier user can have.
   Future<List<Todo>> listTodos() async {
     final json = await _send('GET', '$_userPath/todos');
-    return [for (final t in (json['_list'] as List? ?? const [])) Todo.fromJson(t as Map<String, dynamic>)];
+    return [for (final t in (json['data'] as List? ?? const [])) Todo.fromJson(t as Map<String, dynamic>)];
   }
 
   /// POST /api/users/{user_id}/todos - add a todo (a user may have 25; the
@@ -117,9 +121,13 @@ class TodosApi {
   }
 
   /// PUT /api/users/{user_id}/todos/{id} - change the text and/or the
-  /// completed flag. `description` is required on every update.
-  Future<Todo> updateTodo(int id, {required String description, required bool completed}) async {
-    final json = await _send('PUT', '$_userPath/todos/$id', body: {'description': description, 'completed': completed});
+  /// completed flag. Only the fields sent change.
+  Future<Todo> updateTodo(int id, {String? description, bool? completed}) async {
+    final json = await _send(
+      'PUT',
+      '$_userPath/todos/$id',
+      body: {if (description != null) 'description': description, if (completed != null) 'completed': completed},
+    );
     return Todo.fromJson(json);
   }
 
@@ -136,9 +144,7 @@ class TodosApi {
 
   // ---------------------------------------------------------------- plumbing
 
-  /// Sends one request and returns the decoded JSON. A JSON array is wrapped
-  /// as `{'_list': [...]}` so every caller gets a Map; a bare boolean (the API
-  /// answers `true` to logout) becomes `{}`.
+  /// Sends one request and returns the decoded JSON object.
   Future<Map<String, dynamic>> _send(
     String method,
     String path, {
@@ -175,7 +181,6 @@ class TodosApi {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw ApiException(response.statusCode, _errorMessage(response.statusCode, decoded));
     }
-    if (decoded is List) return {'_list': decoded};
     if (decoded is Map<String, dynamic>) return decoded;
     return {};
   }

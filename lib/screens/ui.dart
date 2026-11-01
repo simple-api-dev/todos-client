@@ -25,6 +25,8 @@ String describeError(Object e) {
       return 'Not found. It may already have been deleted.';
     case 429:
       return 'Too many requests. Wait a few seconds and try again.';
+    case 503:
+      return 'The service is busy. Please try again shortly.';
     default:
       return e.message;
   }
@@ -52,7 +54,7 @@ const demoNotice = 'This is a shared demo. Data resets every night. Do not use a
 const demoFullMessage = 'The demo is full. It resets every night.';
 
 /// True when a register answer means the key holds all the users it may have.
-bool isUserLimit(ApiException e) => e.statusCode == 403 && e.message.toLowerCase().contains('user accounts');
+bool isUserLimit(ApiException e) => e.statusCode == 403 && e.message.toLowerCase().contains('users per key');
 
 void showSnack(BuildContext context, String text) {
   ScaffoldMessenger.of(context)

@@ -88,7 +88,7 @@ class _TodosScreenState extends State<TodosScreen> {
 
   // PUT /api/users/{user_id}/todos/{id}  (completed flag)
   Future<void> _toggle(Todo t) => _run(() async {
-    final saved = await state.api.updateTodo(t.id, description: t.description, completed: !t.completed);
+    final saved = await state.api.updateTodo(t.id, completed: !t.completed);
     setState(() => _todos = [for (final x in _todos) x.id == t.id ? saved : x]);
   });
 
@@ -100,7 +100,7 @@ class _TodosScreenState extends State<TodosScreen> {
     );
     if (text == null || text == t.description) return;
     await _run(() async {
-      final saved = await state.api.updateTodo(t.id, description: text, completed: t.completed);
+      final saved = await state.api.updateTodo(t.id, description: text);
       setState(() => _todos = [for (final x in _todos) x.id == t.id ? saved : x]);
     });
   }

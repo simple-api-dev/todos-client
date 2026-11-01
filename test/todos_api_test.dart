@@ -8,6 +8,24 @@ import 'package:todos_client/todos_api.dart';
 // A made-up value: the tests never touch the real API or a real key.
 const fakeKey = 'test-key';
 
+/// What register and login answer.
+Map<String, Object?> session(String token, {int id = 456, String name = 'Check A'}) => {
+  'token': token,
+  'expires_at': '2026-12-01T03:47:06Z',
+  'user': {
+    'id': id,
+    'name': name,
+    'email': 'a@example.com',
+    'admin': false,
+    'enabled': true,
+    'created_at': '2026-11-01T03:47:06Z',
+    'updated_at': '2026-11-01T03:47:06Z',
+  },
+};
+
+/// One page of a list, as every list answers.
+Map<String, Object?> page(List<Object?> rows) => {'data': rows, 'total': rows.length, 'page': 1, 'per_page': 25};
+
 // All HTTP is mocked; nothing here calls the real API.
 
 /// Builds an API whose HTTP client answers with [handler] and records requests.
@@ -31,7 +49,7 @@ http.Response text(String body, int status) => http.Response(body, status, heade
 
 void main() {
   test('sends the key as the apikey query parameter, not as a header', () async {
-    final (api, seen) = apiWith((_) => json([]));
+    final (api, seen) = apiWith((_) => json(session('tok')));
     await api.login(email: 'a@example.com', password: 'secret-pass');
 
     final r = seen.single;
@@ -46,16 +64,9 @@ void main() {
   test('login stores the token and the user id, and later calls use both', () async {
     final (api, seen) = apiWith((r) {
       if (r.url.path == '/api/users/login') {
-        return json({
-          'id': 456,
-          'name': 'Check A',
-          'email': 'a@example.com',
-          'enabled': true,
-          'token': 'tok-1',
-          'admin': false,
-        });
+        return json(session('tok-1'));
       }
-      return json([]);
+      return json(page([]));
     });
     final result = await api.login(email: 'a@example.com', password: 'secret-pass');
     expect(result.token, 'tok-1');
@@ -70,7 +81,7 @@ void main() {
   });
 
   test('login and register never send a bearer token, even if one is set', () async {
-    final (api, seen) = apiWith((r) => json({'name': 'A', 'token': 'tok-new', 'id': 456}), token: 'old-tok', userId: 1);
+    final (api, seen) = apiWith((r) => json(session('tok-new')), token: 'old-tok', userId: 1);
     await api.login(email: 'a@example.com', password: 'secret-pass');
     await api.register(name: 'A', email: 'a@example.com', password: 'secret-pass');
     expect(seen.length, 2);
@@ -92,16 +103,7 @@ void main() {
   });
 
   test('register sends name, email and password and logs in', () async {
-    final (api, seen) = apiWith(
-      (_) => json({
-        'name': 'Check A',
-        'email': 'a@example.com',
-        'enabled': true,
-        'token': 'tok-r',
-        'admin': false,
-        'id': 456,
-      }, 201),
-    );
+    final (api, seen) = apiWith((_) => json(session('tok-r'), 201));
     final result = await api.register(name: 'Check A', email: 'a@example.com', password: 'secret-pass');
 
     expect(seen.single.method, 'POST');
@@ -127,7 +129,7 @@ void main() {
 
   test('a duplicate register throws the 409', () async {
     final (api, _) = apiWith(
-      (_) => json({'message': 'User registration failed, email already registered to this developer account.'}, 409),
+      (_) => json({'message': 'User registration failed, email already registered for this key.'}, 409),
     );
     await expectLater(
       api.register(name: 'A', email: 'a@example.com', password: 'secret-pass'),
@@ -144,7 +146,7 @@ void main() {
   });
 
   test('logout posts and forgets the token even when the API refuses', () async {
-    final (api, seen) = loggedIn((_) => json(true)); // the API answers `true`
+    final (api, seen) = loggedIn((_) => json({'message': 'Logged out.'}));
     await api.logout();
     expect(seen.single.method, 'POST');
     expect(seen.single.url.path, '/api/users/logout');
@@ -158,10 +160,19 @@ void main() {
 
   test('listTodos parses the list; completed is a real boolean', () async {
     final (api, seen) = loggedIn(
-      (_) => json([
-        {'id': 3260, 'user_id': 42, 'description': 'first todo', 'completed': false, 'author': 'Check A', 'meta': null},
-        {'id': 3261, 'user_id': 42, 'description': 'second', 'completed': true, 'author': 'Check A', 'meta': null},
-      ]),
+      (_) => json(
+        page([
+          {
+            'id': 3260,
+            'user_id': 42,
+            'description': 'first todo',
+            'completed': false,
+            'author': 'Check A',
+            'meta': null,
+          },
+          {'id': 3261, 'user_id': 42, 'description': 'second', 'completed': true, 'author': 'Check A', 'meta': null},
+        ]),
+      ),
     );
     final todos = await api.listTodos();
 
@@ -174,7 +185,8 @@ void main() {
 
   test('createTodo posts the description and parses the boolean answer', () async {
     final (api, seen) = loggedIn(
-      (_) => json({'description': 'first todo', 'completed': false, 'user_id': 42, 'author': 'Check A', 'id': 3260}),
+      (_) =>
+          json({'description': 'first todo', 'completed': false, 'user_id': 42, 'author': 'Check A', 'id': 3260}, 201),
     );
     final todo = await api.createTodo('first todo');
 
@@ -185,16 +197,19 @@ void main() {
     expect(todo.completed, isFalse);
   });
 
-  test('updateTodo puts the description and the completed flag', () async {
+  test('updateTodo sends only the fields it was given', () async {
     final (api, seen) = loggedIn(
       (_) => json({'id': 3260, 'user_id': 42, 'description': 'first todo', 'completed': true, 'author': 'Check A'}),
     );
-    final todo = await api.updateTodo(3260, description: 'first todo', completed: true);
+    final todo = await api.updateTodo(3260, completed: true);
 
     expect(seen.single.method, 'PUT');
     expect(seen.single.url.path, '/api/users/42/todos/3260');
-    expect(jsonDecode(seen.single.body), {'description': 'first todo', 'completed': true});
+    expect(jsonDecode(seen.single.body), {'completed': true});
     expect(todo.completed, isTrue);
+
+    await api.updateTodo(3260, description: 'new text');
+    expect(jsonDecode(seen.last.body), {'description': 'new text'});
   });
 
   test('deleteTodo uses /todos/{id}', () async {
@@ -222,7 +237,7 @@ void main() {
   });
 
   test('todo calls without a login fail locally, without any request', () async {
-    final (api, seen) = apiWith((_) => json([]));
+    final (api, seen) = apiWith((_) => json(page([])));
     await expectLater(api.listTodos(), throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 401)));
     expect(seen, isEmpty);
   });
@@ -284,9 +299,14 @@ void main() {
     });
 
     test('403: the per-user todo limit', () async {
-      final e = await failing(json({'message': 'Maximum number of todos (25) per user has been reached.'}, 403));
+      final e = await failing(json({'message': 'Maximum of 25 todos per user reached.'}, 403));
       expect(e.statusCode, 403);
-      expect(e.message, contains('Maximum number of todos (25)'));
+      expect(e.message, contains('Maximum of 25 todos'));
+    });
+
+    test('503: the key service is down', () async {
+      final e = await failing(json({'message': 'Key service unavailable. Please try again shortly.'}, 503));
+      expect(e.statusCode, 503);
     });
 
     test('422: validation message', () async {

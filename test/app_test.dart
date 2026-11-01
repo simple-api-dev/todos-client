@@ -15,12 +15,17 @@ http.Response json(Object body, [int status = 200]) =>
 http.Response text(String body, int status) => http.Response(body, status, headers: {'content-type': 'text/html'});
 
 const authAnswer = {
-  'name': 'Ann',
-  'email': 'ann@example.com',
-  'enabled': true,
   'token': 'tok',
-  'admin': false,
-  'id': 42,
+  'expires_at': '2026-12-01T03:47:06Z',
+  'user': {
+    'id': 42,
+    'name': 'Ann',
+    'email': 'ann@example.com',
+    'admin': false,
+    'enabled': true,
+    'created_at': '2026-11-01T03:47:06Z',
+    'updated_at': '2026-11-01T03:47:06Z',
+  },
 };
 
 Map<String, Object?> todoJson(int id, String description, {bool completed = false}) => {
@@ -30,7 +35,12 @@ Map<String, Object?> todoJson(int id, String description, {bool completed = fals
   'completed': completed,
   'author': 'Ann',
   'meta': null,
+  'created_at': '2026-11-01T03:47:06Z',
+  'updated_at': '2026-11-01T03:47:06Z',
 };
+
+/// One page of a list, as every list answers.
+Map<String, Object?> page(List<Object?> rows) => {'data': rows, 'total': rows.length, 'page': 1, 'per_page': 25};
 
 /// Links the app asked to open.
 final opened = <String>[];
@@ -72,16 +82,15 @@ class FakeServer {
       return fail;
     }
     final path = r.url.path;
-    if (path == '/api/todos' && r.method == 'GET') return json([]); // the key check
     if (path == '/api/users/login') return json(authAnswer);
     if (path == '/api/users/register') return json(authAnswer, 201);
-    if (path == '/api/users/logout') return json(true);
-    if (path == '/api/users/42/todos' && r.method == 'GET') return json(todos);
+    if (path == '/api/users/logout') return json({'message': 'Logged out.'});
+    if (path == '/api/users/42/todos' && r.method == 'GET') return json(page(todos));
     if (path == '/api/users/42/todos' && r.method == 'POST') {
       final body = jsonDecode(r.body) as Map;
       final todo = todoJson(nextId++, body['description'] as String, completed: body['completed'] == true);
       todos.add(todo);
-      return json({...todo}..remove('meta'));
+      return json(todo, 201);
     }
     final one = RegExp(r'^/api/users/42/todos/(\d+)$').firstMatch(path);
     if (one != null) {
@@ -89,9 +98,9 @@ class FakeServer {
       final i = todos.indexWhere((t) => t['id'] == id);
       if (i < 0) return json({'message': 'Todo not found ($id)'}, 404);
       if (r.method == 'PUT') {
-        final body = jsonDecode(r.body) as Map;
-        todos[i] = todoJson(id, body['description'] as String, completed: body['completed'] == true);
-        return json({...todos[i], 'completed': body['completed'] == true}..remove('meta'));
+        // only the fields sent change
+        todos[i] = {...todos[i], ...(jsonDecode(r.body) as Map<String, Object?>)};
+        return json(todos[i]);
       }
       if (r.method == 'DELETE') {
         todos.removeAt(i);
@@ -250,7 +259,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(seen.last.method, 'PUT');
     expect(seen.last.url.path, '/api/users/42/todos/100');
-    expect(jsonDecode(seen.last.body), {'description': 'Buy milk', 'completed': true});
+    expect(jsonDecode(seen.last.body), {'completed': true});
     expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
 
     // uncomplete
@@ -266,7 +275,7 @@ void main() {
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     expect(find.text('Buy oat milk'), findsOneWidget);
-    expect(jsonDecode(seen.last.body), {'description': 'Buy oat milk', 'completed': false});
+    expect(jsonDecode(seen.last.body), {'description': 'Buy oat milk'});
 
     // delete
     await tester.tap(find.byTooltip('Delete'));
@@ -346,11 +355,7 @@ void main() {
   });
 
   testWidgets('a full demo key (403 on register) shows the demo-full message', (tester) async {
-    await pumpApp(
-      tester,
-      server: (r) =>
-          json({'message': 'Maximum number of user accounts (25) per developer account has been reached.'}, 403),
-    );
+    await pumpApp(tester, server: (r) => json({'message': 'Maximum of 25 users per key reached.'}, 403));
     await logIn(tester, register: true);
 
     expect(find.text('The demo is full. It resets every night.'), findsOneWidget);
@@ -391,6 +396,13 @@ void main() {
     expect(find.text('Log out'), findsOneWidget);
   });
 
+  testWidgets('503 says the service is busy', (tester) async {
+    await pumpApp(tester, server: (r) => json({'message': 'Key service unavailable. Please try again shortly.'}, 503));
+    await logIn(tester);
+
+    expect(find.text('The service is busy. Please try again shortly.'), findsOneWidget);
+  });
+
   testWidgets('429 asks the user to wait', (tester) async {
     await pumpApp(tester, server: (r) => json({'message': 'Throttle Limit Exceeded'}, 429));
     await logIn(tester);
@@ -403,12 +415,12 @@ void main() {
     await pumpApp(tester, server: server.call);
     await logIn(tester);
 
-    server.failNext = json({'message': 'Maximum number of todos (25) per user has been reached.'}, 403);
+    server.failNext = json({'message': 'Maximum of 25 todos per user reached.'}, 403);
     await tester.enterText(find.widgetWithText(TextField, 'What needs doing?'), 'One too many');
     await tester.tap(find.text('Add'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Maximum number of todos (25)'), findsOneWidget);
+    expect(find.textContaining('Maximum of 25 todos'), findsOneWidget);
     expect(find.text('Buy milk'), findsOneWidget);
     expect(find.widgetWithText(ListTile, 'One too many'), findsNothing); // not added to the list
     expect(find.widgetWithText(TextField, 'One too many'), findsOneWidget); // typed text is kept
