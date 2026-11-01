@@ -15,7 +15,7 @@ String describeError(Object e) {
     case 401:
       return isTokenProblem(e)
           ? 'Your session has ended. Please log in again.'
-          : 'The API key was not accepted. Build the app with a valid SIMPLEAPI_KEY.';
+          : 'The API key was not accepted.';
     case 400:
     case 403:
     case 409:
