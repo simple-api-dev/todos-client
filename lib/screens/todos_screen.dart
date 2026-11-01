@@ -144,7 +144,7 @@ class _TodosScreenState extends State<TodosScreen> {
           actions: [
             if (state.loggedIn) ...[
               ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 64),
+                constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width < 480 ? 64 : 200),
                 child: Center(child: Text('Hi, ${state.userName ?? 'you'}', overflow: TextOverflow.ellipsis)),
               ),
               TextButton(
