@@ -156,7 +156,7 @@ class _TodosScreenState extends State<TodosScreen> {
               TextButton(
                 onPressed: _openAuth,
                 style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
-                child: const Text('Log in / Register'),
+                child: const Text('Log in'),
               ),
           ],
         ),
@@ -248,7 +248,7 @@ class _LoggedOut extends StatelessWidget {
             const SizedBox(height: 8),
             const Text(
               'This sample talks to the free SimpleAPI Todos API. Every todo belongs to a user: try the shared demo '
-              'account in one click, or create your own account (any email address, it is not verified).',
+              'account in one click, or create your own account with any email address. It is not verified.',
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),

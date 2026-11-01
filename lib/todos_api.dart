@@ -3,7 +3,7 @@
 /// Docs: https://todos.simpleapi.dev/docs
 ///
 /// Two rules apply to every request:
-///  * the API key goes in the `apikey` query string (never a header);
+///  * the API key goes in the `apikey` query string (an `APIKEY` header also works);
 ///  * a logged-in user also sends `Authorization: Bearer <token>`, where the
 ///    token comes from [TodosApi.register] / [TodosApi.login]. Those two calls
 ///    never send a bearer token themselves.
@@ -191,6 +191,6 @@ class TodosApi {
       final message = decoded['message'];
       if (message is String && message.isNotEmpty) return message;
     }
-    return 'Request failed (HTTP $status).';
+    return 'Something went wrong. Please try again.';
   }
 }

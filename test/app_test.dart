@@ -113,7 +113,7 @@ class FakeServer {
 }
 
 Future<void> logIn(WidgetTester tester, {bool register = false}) async {
-  await tester.tap(find.text('Log in / Register'));
+  await tester.tap(find.widgetWithText(TextButton, 'Log in'));
   await tester.pumpAndSettle();
   if (register) {
     await tester.tap(find.text('Create an account'));
@@ -190,7 +190,7 @@ void main() {
   testWidgets('the log in screen also offers the demo account and shows the demo notice', (tester) async {
     final server = FakeServer([todoJson(1, 'Water the plants')]);
     await pumpApp(tester, server: server.call);
-    await tester.tap(find.text('Log in / Register'));
+    await tester.tap(find.widgetWithText(TextButton, 'Log in'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('demo-notice')), findsOneWidget);
 
@@ -202,14 +202,14 @@ void main() {
 
   testWidgets('the log in form follows the shared login layout', (tester) async {
     await pumpApp(tester, server: FakeServer().call);
-    await tester.tap(find.text('Log in / Register'));
+    await tester.tap(find.widgetWithText(TextButton, 'Log in'));
     await tester.pumpAndSettle();
     await expectSharedLoginLayout(tester);
   });
 
   testWidgets('the register screen shows the demo notice and the demo button', (tester) async {
     await pumpApp(tester, server: FakeServer().call);
-    await tester.tap(find.text('Log in / Register'));
+    await tester.tap(find.widgetWithText(TextButton, 'Log in'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Create an account'));
     await tester.pumpAndSettle();
@@ -240,7 +240,7 @@ void main() {
     // The test font is about twice as wide as Roboto, so this checks the layout (no overflow, nothing cut
     // off) rather than exact widths. In Roboto the title is about 137px and leaves room for the actions.
     expect(find.text('SimpleAPI Todos'), findsOneWidget);
-    expect(find.text('Log in / Register'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Log in'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.text('Try the demo account'));
@@ -365,11 +365,11 @@ void main() {
     await pumpApp(
       tester,
       server: (r) =>
-          json({'message': 'User registration failed, email already registered to this developer account.'}, 409),
+          json({'message': 'That email is already registered to this key.'}, 409),
     );
     await logIn(tester, register: true);
 
-    expect(find.textContaining('email already registered'), findsOneWidget);
+    expect(find.textContaining('already registered'), findsOneWidget);
   });
 
   testWidgets('409 (key uses an external auth service) is shown as a conflict', (tester) async {
@@ -389,7 +389,7 @@ void main() {
   });
 
   testWidgets('a full demo key (403 on register) shows the demo-full message', (tester) async {
-    await pumpApp(tester, server: (r) => json({'message': 'Maximum of 25 users per key reached.'}, 403));
+    await pumpApp(tester, server: (r) => json({'message': 'Free tier limit reached: 25 users per key.'}, 403));
     await logIn(tester, register: true);
 
     expect(find.text('The demo is full. It resets every night.'), findsOneWidget);
@@ -402,7 +402,7 @@ void main() {
     server.failNext = json({'message': 'Unauthorized.'}, 401);
     await tester.tap(find.byTooltip('Delete'));
     await tester.pumpAndSettle();
-    expect(find.text('Log in / Register'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Log in'), findsOneWidget);
 
     seen.clear();
     await logIn(tester);
@@ -410,10 +410,10 @@ void main() {
   });
 
   testWidgets('a malformed JSON body (400) shows the API message', (tester) async {
-    await pumpApp(tester, server: (r) => json({'message': 'Malformed JSON in the request body.'}, 400));
+    await pumpApp(tester, server: (r) => json({'message': 'Malformed JSON body. Send a valid JSON object.'}, 400));
     await logIn(tester, register: true);
 
-    expect(find.text('Malformed JSON in the request body.'), findsOneWidget);
+    expect(find.text('Malformed JSON body. Send a valid JSON object.'), findsOneWidget);
   });
 
   testWidgets('a user_id that is not yours (403) shows the message and keeps you logged in', (tester) async {
@@ -449,12 +449,12 @@ void main() {
     await pumpApp(tester, server: server.call);
     await logIn(tester);
 
-    server.failNext = json({'message': 'Maximum of 25 todos per user reached.'}, 403);
+    server.failNext = json({'message': 'Free tier limit reached: 25 todos per user.'}, 403);
     await tester.enterText(find.widgetWithText(TextField, 'What needs doing?'), 'One too many');
     await tester.tap(find.text('Add'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Maximum of 25 todos'), findsOneWidget);
+    expect(find.textContaining('25 todos per user'), findsOneWidget);
     expect(find.text('Buy milk'), findsOneWidget);
     expect(find.widgetWithText(ListTile, 'One too many'), findsNothing); // not added to the list
     expect(find.widgetWithText(TextField, 'One too many'), findsOneWidget); // typed text is kept
@@ -499,7 +499,7 @@ void main() {
 
     expect(find.text('Your session has ended. Please log in again.'), findsOneWidget);
     expect(find.text('Your todos'), findsOneWidget); // back on the logged-out page
-    expect(find.text('Log in / Register'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Log in'), findsOneWidget);
   });
 
   testWidgets('log out posts to the API and shows the logged-out page', (tester) async {
@@ -523,10 +523,10 @@ void main() {
         if (r.url.path == '/api/users/forgot') {
           return json({'message': 'If an account exists for that email, a reset code has been sent.'});
         }
-        return json({'message': 'Password updated.'});
+        return json({'message': 'Password updated. Please log in.'});
       },
     );
-    await tester.tap(find.text('Log in / Register'));
+    await tester.tap(find.widgetWithText(TextButton, 'Log in'));
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextField, 'Email'), 'ann@example.com');
     await tester.tap(find.text('Forgot password?'));
@@ -545,7 +545,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(seen.last.url.path, '/api/users/reset');
     expect(jsonDecode(seen.last.body), {'email': 'ann@example.com', 'code': '123456', 'password': 'new-password'});
-    expect(find.textContaining('Password updated. You can log in now.'), findsOneWidget);
+    expect(find.textContaining('Password updated. Please log in.'), findsOneWidget);
   });
 
   testWidgets('a reset refused for the demo account (403) shows the API message', (tester) async {
@@ -553,7 +553,7 @@ void main() {
       tester,
       server: (r) => json({'message': 'The demo account cannot be changed.'}, 403),
     );
-    await tester.tap(find.text('Log in / Register'));
+    await tester.tap(find.widgetWithText(TextButton, 'Log in'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Forgot password?'));
     await tester.pumpAndSettle();
@@ -575,7 +575,7 @@ void main() {
         return json({'message': 'Invalid or expired reset code.'}, 400);
       },
     );
-    await tester.tap(find.text('Log in / Register'));
+    await tester.tap(find.widgetWithText(TextButton, 'Log in'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Forgot password?'));
     await tester.pumpAndSettle();

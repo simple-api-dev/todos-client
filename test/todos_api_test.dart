@@ -129,7 +129,7 @@ void main() {
 
   test('a duplicate register throws the 409', () async {
     final (api, _) = apiWith(
-      (_) => json({'message': 'User registration failed, email already registered for this key.'}, 409),
+      (_) => json({'message': 'That email is already registered to this key.'}, 409),
     );
     await expectLater(
       api.register(name: 'A', email: 'a@example.com', password: 'secret-pass'),
@@ -276,7 +276,7 @@ void main() {
     });
 
     test('400: malformed JSON body', () async {
-      final e = await failing(json({'message': 'Malformed JSON in the request body.'}, 400));
+      final e = await failing(json({'message': 'Malformed JSON body. Send a valid JSON object.'}, 400));
       expect(e.statusCode, 400);
     });
 
@@ -290,7 +290,7 @@ void main() {
     test('a non-JSON body (not from the API) falls back to a generic message', () async {
       final e = await failing(text('<html>Bad gateway</html>', 502));
       expect(e.statusCode, 502);
-      expect(e.message, 'Request failed (HTTP 502).');
+      expect(e.message, 'Something went wrong. Please try again.');
     });
 
     test('404 on update: a JSON message', () async {
@@ -299,9 +299,9 @@ void main() {
     });
 
     test('403: the per-user todo limit', () async {
-      final e = await failing(json({'message': 'Maximum of 25 todos per user reached.'}, 403));
+      final e = await failing(json({'message': 'Free tier limit reached: 25 todos per user.'}, 403));
       expect(e.statusCode, 403);
-      expect(e.message, contains('Maximum of 25 todos'));
+      expect(e.message, contains('25 todos per user'));
     });
 
     test('503: the key service is down', () async {
@@ -318,7 +318,7 @@ void main() {
     test('429 and an empty body fall back to a generic message', () async {
       final e = await failing(http.Response('', 429));
       expect(e.statusCode, 429);
-      expect(e.message, 'Request failed (HTTP 429).');
+      expect(e.message, 'Something went wrong. Please try again.');
     });
   });
 

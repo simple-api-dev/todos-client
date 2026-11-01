@@ -16,7 +16,7 @@ class TodosApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SimpleAPI Todos sample',
+      title: 'Todos API sample | SimpleAPI',
       theme: ThemeData(
         colorSchemeSeed: const Color(0xFF0066CC),
         useMaterial3: true,
