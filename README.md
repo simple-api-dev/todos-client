@@ -65,7 +65,7 @@ To set the demo key for your own deployment, add a repository **variable** named
 - A key holds 25 users, and each user may have 25 todos. The call that would go over answers `403`.
 - Passwords need at least 8 characters.
 - The API allows 60 requests a minute per IP address. More answers `429`.
-- The demo account is `demo@simpleapi.dev` with password `try-the-demo`. It is public by design and shared by every visitor. The data resets every night, so do not use a real password or any private details. When the demo key has no room for more users, registering shows "The demo is full. It resets every night."
+- The demo account is `demo@simpleapi.dev` with password `try-the-demo`. It is public by design and shared by every visitor, so `users/forgot` and `users/reset` answer `403` `The demo account cannot be changed.` for it, and the app shows that message. The data resets every night, so do not use a real password or any private details. When the demo key has no room for more users, registering shows "The demo is full. It resets every night."
 
 ## Project layout
 
