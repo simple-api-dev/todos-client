@@ -69,7 +69,7 @@ class _ForgotScreenState extends State<ForgotScreen> {
     );
     if (message == null || !mounted) return;
     Navigator.of(context).pop();
-    showSnack(context, '$message You can log in now.');
+    showSnack(context, message);
   }
 
   @override

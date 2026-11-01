@@ -8,14 +8,16 @@ A small Flutter web app that shows how to call the free [SimpleAPI Todos API](ht
 
 ## Run it
 
-You need the [Flutter SDK](https://docs.flutter.dev/get-started/install) (stable; CI uses 3.47.8).
+You need the [Flutter SDK](https://docs.flutter.dev/get-started/install) (stable; CI uses 3.47.8) and a free key from [keys.simpleapi.dev](https://keys.simpleapi.dev/?product=todos).
 
 ```bash
+git clone https://github.com/simple-api-dev/todos-client
+cd todos-client
 flutter pub get
 flutter run -d chrome --dart-define=SIMPLEAPI_KEY=YOUR_KEY
 ```
 
-The live demo opens on a **Try the demo account** button: one click logs in as a shared demo user, with no signup and no key handling. Run the tests with `flutter test`. All HTTP is mocked, so nothing calls the real API.
+The live demo opens on a **Try the demo account** button: one click logs in as a shared demo user, with no registration and no key handling. Run the tests with `flutter test`. All HTTP is mocked, so nothing calls the real API.
 
 ## How it calls the API
 
@@ -43,15 +45,13 @@ Every call lives in [`lib/todos_api.dart`](lib/todos_api.dart), one method per e
 
 ## Use your own key
 
-The app uses only the key compiled in at build time. To run it with your own, pass it to Flutter:
+The live demo is built with a shared demo key. The app has no screen for entering a key: it uses only the key compiled in at build time. To run it with your own, pass it to Flutter:
 
 ```bash
 flutter run -d chrome --dart-define=SIMPLEAPI_KEY=YOUR_KEY
 ```
 
-Get a free key at [keys.simpleapi.dev](https://keys.simpleapi.dev/?product=todos). Anything passed with `--dart-define` ends up in the compiled JavaScript and can be read by anyone, so for a public demo use a free key made for it.
-
-To set the demo key for your own deployment, add a repository **variable** named `SIMPLEAPI_KEY` (Settings, Secrets and variables, Actions, Variables) and push to `main`. The workflow builds with `--dart-define=SIMPLEAPI_KEY=...`.
+Get a free key at [keys.simpleapi.dev](https://keys.simpleapi.dev/?product=todos).
 
 ## Good to know
 
@@ -65,7 +65,7 @@ To set the demo key for your own deployment, add a repository **variable** named
 - A key holds 25 users, and each user may have 25 todos. The call that would go over answers `403`.
 - Passwords need at least 8 characters.
 - The API allows 60 requests a minute per IP address. More answers `429`.
-- The demo account is `demo@simpleapi.dev` with password `try-the-demo`. It is public by design and shared by every visitor, so `users/forgot` and `users/reset` answer `403` `The demo account cannot be changed.` for it, and the app shows that message. The data resets every night, so do not use a real password or any private details. When the demo key has no room for more users, registering shows "The demo is full. It resets every night."
+- The demo account is `demo@simpleapi.dev` with password `try-the-demo`. It is public by design and shared by every visitor, and the live demo resets every night, so do not use a real password or any private details. When the demo key has no room for more users, registering shows "The demo is full. It resets every night." The API refuses `users/forgot` and `users/reset` for it with `403` `The demo account cannot be changed.`, and the app shows that message.
 
 ## Project layout
 
@@ -81,7 +81,15 @@ test/                     unit tests for the client, widget tests for the app
 
 ## Deploy to GitHub Pages
 
-[`.github/workflows/pages.yml`](.github/workflows/pages.yml) runs on every push to `main`. It runs `flutter analyze` and `flutter test`, builds with `flutter build web --release --base-href /todos-client/`, and publishes with the official Pages actions. In your own copy, add the `SIMPLEAPI_KEY` variable (see Use your own key) and set **Settings, Pages, Source** to **GitHub Actions**. If you rename the repository, change `--base-href` to match.
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml) runs on every push to `main`. It runs `flutter analyze` and `flutter test`, builds with `flutter build web --release --base-href /todos-client/`, and publishes with the official Pages actions.
+
+In your own copy:
+
+1. Set **Settings, Pages, Source** to **GitHub Actions**.
+2. Add a repository **variable** named `SIMPLEAPI_KEY` under **Settings, Secrets and variables, Actions, Variables**. The build passes it with `--dart-define=SIMPLEAPI_KEY=...`.
+3. Push to `main`, or run the workflow.
+
+Anything passed with `--dart-define` ends up in the compiled JavaScript, so anyone can read it from the deployed site. Use a free key made for a public demo. If you rename the repository, change `--base-href` to match.
 
 ## License
 
