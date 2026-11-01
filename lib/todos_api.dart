@@ -126,7 +126,7 @@ class TodosApi {
     final json = await _send(
       'PUT',
       '$_userPath/todos/$id',
-      body: {if (description != null) 'description': description, if (completed != null) 'completed': completed},
+      body: {'description': ?description, 'completed': ?completed},
     );
     return Todo.fromJson(json);
   }
