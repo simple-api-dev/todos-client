@@ -39,7 +39,7 @@ Every call lives in [`lib/todos_api.dart`](lib/todos_api.dart), one method per e
 | **Log in / Register** (`auth_screen.dart`) | Get a token, or **Try the demo account**. **Log out** is in the app bar. | `POST /api/users/register`, `POST /api/users/login`, `POST /api/users/logout` |
 | **Reset password** (`forgot_screen.dart`) | Email a 6-digit code, then send it with a new password. | `POST /api/users/forgot`, `POST /api/users/reset` |
 
-`{user_id}` is always the logged-in user's own id, taken from the register or login answer. The API has more endpoints than this sample uses, such as shared todos, deleting users and admin calls. See the [full docs](https://todos.simpleapi.dev/docs).
+`{user_id}` is always the logged-in user's own id, taken from the `user` object in the register or login answer. The API has more endpoints than this sample uses, such as shared todos, changing or deleting your account and admin calls. See the [full docs](https://todos.simpleapi.dev/docs).
 
 ## Use your own key
 
@@ -55,10 +55,13 @@ To set the demo key for your own deployment, add a repository **variable** named
 
 ## Good to know
 
-- Every error is JSON, `{"message": "..."}`. The app shows readable text for 400, 401, 403, 404, 409, 422 and 429.
+- Every error is JSON, `{"message": "..."}`. The app shows readable text for 400, 401, 403, 404, 409, 422, 429 and 503.
+- Login and register answer `{"token": "...", "expires_at": "...", "user": {...}}`. A token lasts 30 days, and logging out ends only this session.
+- A list answers `{"data": [...], "total": 42, "page": 1, "per_page": 25}`.
+- A `PUT` changes only the fields you send, so the checkbox sends `completed` and the edit dialog sends `description`.
 - A bad or missing key answers `401`. So does a dead token; the app then logs you out and shows the login form. A failed login is also a `401` ("Invalid email or password.") and is shown on the form.
 - Login and register never send the bearer token.
-- A new user answers `201`. Registering an email that is already taken answers `409`.
+- A new user or todo answers `201`. Registering an email that is already taken answers `409`.
 - A key holds 25 users, and each user may have 25 todos. The call that would go over answers `403`.
 - Passwords need at least 8 characters.
 - The API allows 60 requests a minute per IP address. More answers `429`.
